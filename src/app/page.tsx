@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { UsuarioDigitalUI, UsuarioDigitalFromAPI, APIResponse } from '../../types/usuario';
 
 export default function Home() {
   // Función para obtener la fecha de hoy en formato YYYY-MM-DD
@@ -14,7 +15,7 @@ export default function Home() {
   const [endDate, setEndDate] = useState(getTodayDate());
   
   // Estados para los datos y carga
-  const [clientes, setClientes] = useState<any[]>([]);
+  const [clientes, setClientes] = useState<UsuarioDigitalUI[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -24,106 +25,19 @@ export default function Home() {
   
   // Estados para el modal de motivo de no afiliación
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [selectedUser, setSelectedUser] = useState<UsuarioDigitalUI | null>(null);
   const [motivoNoAfiliacion, setMotivoNoAfiliacion] = useState('');
   
   // Estado para almacenar los motivos de no afiliación
   const [motivosNoAfiliacion, setMotivosNoAfiliacion] = useState<{[key: string]: string}>({});
 
-  // Datos de ejemplo para la tabla
-  const sampleData = [
-    {
-      fechaUsuarioDigital: getTodayDate(),
-      idUsuarioDigital: "UD001",
-      nombrePreferido: "María",
-      idContacto: "CT001",
-      nombreCompletoContacto: "María García López",
-      identificacion: "12345678",
-      tipoIdentificacion: "Cédula",
-      correoApp: "maria.garcia@email.com",
-      telefonoApp: "+57 300 123 4567",
-      fotoPerfilApp: "/avatar1.jpg"
-    },
-    {
-      fechaUsuarioDigital: getTodayDate(),
-      idUsuarioDigital: "UD002",
-      nombrePreferido: "Carlos",
-      idContacto: "CT002",
-      nombreCompletoContacto: "Carlos Andrés Rodríguez",
-      identificacion: "87654321",
-      tipoIdentificacion: "Cédula",
-      correoApp: "carlos.rodriguez@email.com",
-      telefonoApp: "+57 301 987 6543",
-      fotoPerfilApp: "/avatar2.jpg"
-    },
-    {
-      fechaUsuarioDigital: "2024-01-15",
-      idUsuarioDigital: "UD003",
-      nombrePreferido: "Ana",
-      idContacto: "CT003",
-      nombreCompletoContacto: "Ana Sofía Martínez",
-      identificacion: "11223344",
-      tipoIdentificacion: "Cédula",
-      correoApp: "ana.martinez@email.com",
-      telefonoApp: "+57 302 555 7890",
-      fotoPerfilApp: "/avatar3.jpg"
-    },
-    {
-      fechaUsuarioDigital: "2024-01-16",
-      idUsuarioDigital: "UD002",
-      nombrePreferido: "Carlos",
-      idContacto: "CT002",
-      nombreCompletoContacto: "Carlos Andrés Rodríguez",
-      identificacion: "87654321",
-      tipoIdentificacion: "Cédula",
-      correoApp: "carlos.rodriguez@email.com",
-      telefonoApp: "+57 301 987 6543",
-      fotoPerfilApp: "/avatar2.jpg"
-    },
-    {
-      fechaUsuarioDigital: "2024-01-17",
-      idUsuarioDigital: "UD003",
-      nombrePreferido: "Ana",
-      idContacto: "CT003",
-      nombreCompletoContacto: "Ana Sofía Martínez",
-      identificacion: "11223344",
-      tipoIdentificacion: "Cédula",
-      correoApp: "ana.martinez@email.com",
-      telefonoApp: "+57 302 555 7890",
-      fotoPerfilApp: "/avatar3.jpg"
-    },
-    {
-      fechaUsuarioDigital: "2024-02-01",
-      idUsuarioDigital: "UD004",
-      nombrePreferido: "Luis",
-      idContacto: "CT004",
-      nombreCompletoContacto: "Luis Fernando Torres",
-      identificacion: "55667788",
-      tipoIdentificacion: "Cédula",
-      correoApp: "luis.torres@email.com",
-      telefonoApp: "+57 303 444 5555",
-      fotoPerfilApp: "/avatar4.jpg"
-    },
-    {
-      fechaUsuarioDigital: "2024-02-15",
-      idUsuarioDigital: "UD005",
-      nombrePreferido: "Elena",
-      idContacto: "CT005",
-      nombreCompletoContacto: "Elena Patricia Morales",
-      identificacion: "99887766",
-      tipoIdentificacion: "Cédula",
-      correoApp: "elena.morales@email.com",
-      telefonoApp: "+57 304 666 7777",
-      fotoPerfilApp: "/avatar5.jpg"
-    }
-  ];
 
   // Función para cargar motivos desde la base de datos
-  const fetchMotivos = async () => {
+  const fetchMotivos = useCallback(async () => {
     try {
       const response = await fetch('/api/motivos');
       if (response.ok) {
-        const data = await response.json();
+        const data: APIResponse<{[key: string]: string}> = await response.json();
         if (data.success) {
           setMotivosNoAfiliacion(data.data);
         }
@@ -131,10 +45,10 @@ export default function Home() {
     } catch (error) {
       console.error('Error cargando motivos:', error);
     }
-  };
+  }, []);
 
   // Función para obtener datos de la API
-  const fetchClientes = async () => {
+  const fetchClientes = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -153,11 +67,11 @@ export default function Home() {
         throw new Error('Error al obtener los datos');
       }
       
-      const data = await usuariosResponse.json();
+      const data: APIResponse<UsuarioDigitalFromAPI[]> = await usuariosResponse.json();
       
       if (data.success) {
         // Formatear datos para que coincidan con el formato esperado
-        const clientesFormateados = data.data.map((usuario: any) => ({
+        const clientesFormateados: UsuarioDigitalUI[] = data.data.map((usuario: UsuarioDigitalFromAPI) => ({
           fechaUsuarioDigital: usuario.fechaUsuarioDigital ? 
             new Date(usuario.fechaUsuarioDigital).toLocaleString('es-HN', {
               year: 'numeric',
@@ -179,17 +93,17 @@ export default function Home() {
               timeZone: 'America/Tegucigalpa'
             }) : '',
           idUsuarioDigital: usuario.idUsuarioDigital,
-          nombrePreferido: usuario.nombrePreferido,
-          nombreCompletoContacto: usuario.nombreCompletoContacto,
-          identificacion: usuario.identificacion,
-          tipoIdentificacion: usuario.tipoIdentificacion,
-          idContacto: usuario.idContacto,
-          correoApp: usuario.correoApp,
-          emailValidado: usuario.emailValidado,
-          metodoAuth: usuario.metodoAuth,
-          telefonoApp: usuario.telefonoApp,
-          telefonoValidado: usuario.telefonoValidado,
-          fotoPerfilApp: usuario.fotoPerfilApp
+          nombrePreferido: usuario.nombrePreferido || null,
+          nombreCompletoContacto: usuario.nombreCompletoContacto || null,
+          identificacion: usuario.identificacion || null,
+          tipoIdentificacion: usuario.tipoIdentificacion || null,
+          idContacto: usuario.idContacto || null,
+          correoApp: usuario.correoApp || null,
+          emailValidado: usuario.emailValidado || null,
+          metodoAuth: usuario.metodoAuth || null,
+          telefonoApp: usuario.telefonoApp || null,
+          telefonoValidado: usuario.telefonoValidado || null,
+          fotoPerfilApp: usuario.fotoPerfilApp || null
         }));
         setClientes(clientesFormateados);
       } else {
@@ -268,17 +182,17 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [startDate, endDate, fetchMotivos]);
 
   // Efecto para cargar datos iniciales y cuando cambien las fechas
   useEffect(() => {
     fetchClientes();
-  }, [startDate, endDate]);
+  }, [fetchClientes]);
 
   // Efecto para cargar motivos al inicializar la aplicación
   useEffect(() => {
     fetchMotivos();
-  }, []);
+  }, [fetchMotivos]);
 
   // Efecto para manejar la tecla Escape para cerrar el modal
   useEffect(() => {
@@ -329,8 +243,8 @@ export default function Home() {
     if (!sortColumn) return clientes;
 
     return [...clientes].sort((a, b) => {
-      let valueA = a[sortColumn];
-      let valueB = b[sortColumn];
+      let valueA = a[sortColumn as keyof UsuarioDigitalUI];
+      let valueB = b[sortColumn as keyof UsuarioDigitalUI];
 
       // Manejar valores nulos
       if (valueA === null || valueA === undefined) valueA = '';
@@ -343,10 +257,11 @@ export default function Home() {
       // Ordenamiento para fechas (ahora con hora incluida)
       if (sortColumn === 'fechaUsuarioDigital') {
         // Convertir formato español a Date
-        const parseSpanishDate = (dateStr: string) => {
-          if (!dateStr) return new Date('1900-01-01');
+        const parseSpanishDate = (dateStr: string | boolean | null | undefined) => {
+          const str = String(dateStr || '');
+          if (!str) return new Date('1900-01-01');
           // Formato: DD/MM/YYYY, HH:mm
-          const [datePart, timePart] = dateStr.split(', ');
+          const [datePart, timePart] = str.split(', ');
           const [day, month, year] = datePart.split('/');
           const [hour, minute] = timePart ? timePart.split(':') : ['00', '00'];
           return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
@@ -376,10 +291,10 @@ export default function Home() {
   };
 
   // Funciones para el modal
-  const handleRowDoubleClick = (user: any) => {
+  const handleRowDoubleClick = (user: UsuarioDigitalUI) => {
     setSelectedUser(user);
     // Si ya existe un motivo, pre-llenarlo en el textarea
-    const existingMotivo = motivosNoAfiliacion[user.idUsuarioDigital] || '';
+    const existingMotivo = motivosNoAfiliacion[user.idUsuarioDigital || ''] || '';
     setMotivoNoAfiliacion(existingMotivo);
     setIsModalOpen(true);
   };
@@ -719,9 +634,9 @@ export default function Home() {
                     </td>
                     {/* 7. Motivo No Afiliación - 200px */}
                     <td className="w-48 px-3 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {motivosNoAfiliacion[row.idUsuarioDigital] ? (
-                        <p className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed" title={motivosNoAfiliacion[row.idUsuarioDigital]}>
-                          {motivosNoAfiliacion[row.idUsuarioDigital]}
+                      {motivosNoAfiliacion[row.idUsuarioDigital || ''] ? (
+                        <p className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed" title={motivosNoAfiliacion[row.idUsuarioDigital || '']}>
+                          {motivosNoAfiliacion[row.idUsuarioDigital || '']}
                         </p>
                       ) : (
                         <span className="text-gray-400 dark:text-gray-500 text-xs italic">
@@ -815,7 +730,7 @@ export default function Home() {
                       ⚠️ Usuario sin contacto asignado
                     </p>
                   )}
-                  {motivosNoAfiliacion[selectedUser?.idUsuarioDigital] && (
+                  {selectedUser?.idUsuarioDigital && motivosNoAfiliacion[selectedUser.idUsuarioDigital] && (
                     <p className="text-sm text-yellow-600 dark:text-yellow-400 font-medium">
                       📝 Motivo previamente registrado (editando)
                     </p>

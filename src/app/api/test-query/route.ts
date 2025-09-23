@@ -4,7 +4,7 @@ export async function GET() {
   try {
     console.log('🔍 Probando query específica...');
     
-    const { Pool } = require('pg');
+    const { Pool } = await import('pg');
     const testPool = new Pool({
       host: process.env.XDB_HOST,
       database: process.env.DB_DATABASE,

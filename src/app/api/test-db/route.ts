@@ -14,7 +14,7 @@ export async function GET() {
     console.log('  USAR_CERTIFICADOS:', process.env.USAR_CERTIFICADOS);
     
     // Intentar múltiples configuraciones de conexión
-    const { Pool } = require('pg');
+    const { Pool } = await import('pg');
     
     // Configuración 1: Sin SSL
     console.log('🔗 Prueba 1: Sin SSL...');
@@ -36,7 +36,7 @@ export async function GET() {
       client1.release();
       testPool1.end();
     } catch (error1) {
-      console.error('❌ Error sin SSL:', error1.message);
+      console.error('❌ Error sin SSL:', error1 instanceof Error ? error1.message : error1);
       
       // Configuración 2: Con SSL
       console.log('🔗 Prueba 2: Con SSL...');
@@ -58,7 +58,7 @@ export async function GET() {
         client2.release();
         testPool2.end();
       } catch (error2) {
-        console.error('❌ Error con SSL:', error2.message);
+        console.error('❌ Error con SSL:', error2 instanceof Error ? error2.message : error2);
         
         // Configuración 3: SSL requerido
         console.log('🔗 Prueba 3: SSL requerido...');
@@ -69,7 +69,7 @@ export async function GET() {
             port: parseInt(process.env.DB_PORT || '5432'),
             user: process.env.DB_USER,
             password: process.env.DB_PASSWORD,
-            ssl: { rejectUnauthorized: false, require: true },
+            ssl: { rejectUnauthorized: false },
             connectionTimeoutMillis: 5000,
           });
           
@@ -80,7 +80,7 @@ export async function GET() {
           client3.release();
           testPool3.end();
         } catch (error3) {
-          console.error('❌ Error con SSL requerido:', error3.message);
+          console.error('❌ Error con SSL requerido:', error3 instanceof Error ? error3.message : error3);
         }
       }
     }
