@@ -15,7 +15,7 @@ export default defineConfig({
   
   // Para introspección (generar schema desde DB existente)
   introspect: {
-    casing: 'camelCase', // Convertir snake_case a camelCase
+casing: 'camel', // Convertir snake_case a camelCase
   },
   
   // Configuración adicional
