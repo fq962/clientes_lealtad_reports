@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { usuariosDigitalesMotivosAfiliacion } from '../schema-accounts';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 // Función para guardar o actualizar un motivo de no afiliación
 export async function guardarMotivoNoAfiliacion(

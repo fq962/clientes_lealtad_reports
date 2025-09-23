@@ -58,7 +58,7 @@ export async function GET() {
       `);
       console.log('✅ Query simple exitosa:', simpleQuery.rows);
     } catch (queryError) {
-      console.error('❌ Error en query simple:', queryError.message);
+      console.error('❌ Error en query simple:', queryError instanceof Error ? queryError.message : queryError);
     }
     
     // Probar query completa (sin Drizzle)
@@ -93,7 +93,7 @@ export async function GET() {
       console.log('✅ Query completa exitosa, registros:', fullQuery.rows.length);
       console.log('Primer registro:', fullQuery.rows[0]);
     } catch (fullQueryError) {
-      console.error('❌ Error en query completa:', fullQueryError.message);
+      console.error('❌ Error en query completa:', fullQueryError instanceof Error ? fullQueryError.message : fullQueryError);
     }
     
     client.release();

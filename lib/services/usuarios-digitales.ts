@@ -77,12 +77,21 @@ export async function obtenerUsuariosDigitalesCompletos(
       // Nota: Sin acceso a usuarios_digitales_credenciales y proveedores_autenticacion
       .orderBy(usuariosDigitales.fechaCreacion, usuariosDigitales.nombrePreferido);
 
+    let result;
     // Aplicar condición WHERE si existe
     if (whereCondition) {
-      return await query.where(whereCondition);
+      result = await query.where(whereCondition);
+    } else {
+      result = await query;
     }
 
-    return await query;
+    // Convertir Date a string para cumplir con la interfaz
+    return result.map(row => ({
+      ...row,
+      fechaUsuarioDigital: row.fechaUsuarioDigital ? row.fechaUsuarioDigital.toISOString() : null,
+      ultimoInicioSesionApp: row.ultimoInicioSesionApp ? row.ultimoInicioSesionApp.toISOString() : null,
+      metodoAuth: row.metodoAuth as string,
+    }));
   } catch (error) {
     console.error('Error obteniendo usuarios digitales completos:', error);
     throw new Error('Error al obtener los datos de usuarios digitales');

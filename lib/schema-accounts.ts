@@ -52,7 +52,7 @@ export const proveedoresAutenticacion = accountsSchema.table('proveedores_autent
 
 // Tabla usuarios_digitales_motivos_afiliacion
 export const usuariosDigitalesMotivosAfiliacion = accountsSchema.table('usuarios_digitales_motivos_afiliacion', {
-  id: integer('id').primaryKey(),
+  id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
   idUsuarioDigital: integer('id_usuario_digital').notNull(),
   motivoNoAfilio: varchar('motivo_no_afilio').notNull(),
 });
