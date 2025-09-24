@@ -89,7 +89,9 @@ export default function Home() {
 
       // Cargar datos de usuarios y motivos en paralelo
       const [usuariosResponse] = await Promise.all([
-        fetch(`/api/usuarios-digitales?${params.toString()}`),
+        fetch(`/api/usuarios-digitales-local?${params.toString()}`, {
+          cache: "no-store",
+        }),
         fetchMotivos(), // Cargar motivos cada vez que se cargan usuarios
       ]);
 
@@ -104,23 +106,33 @@ export default function Home() {
         // Formatear datos para que coincidan con el formato esperado
         const clientesFormateados: UsuarioDigitalUI[] = data.data.map(
           (usuario: UsuarioDigitalFromAPI) => ({
+            // Normalizar fechas del API local ("YYYY-MM-DD HH:mm:ss" -> "YYYY-MM-DDTHH:mm:ss")
             fechaUsuarioDigital: formatHondurasDate(
-              usuario.fechaUsuarioDigital || null
+              usuario.fechaUsuarioDigital
+                ? String(usuario.fechaUsuarioDigital).replace(" ", "T")
+                : null
             ),
             ultimoInicioSesionApp: formatHondurasDate(
-              usuario.ultimoInicioSesionApp || null
+              usuario.ultimoInicioSesionApp
+                ? String(usuario.ultimoInicioSesionApp).replace(" ", "T")
+                : null
             ),
-            idUsuarioDigital: usuario.idUsuarioDigital,
+            // Coerción a string porque el API local devuelve números
+            idUsuarioDigital: String(usuario.idUsuarioDigital),
             nombrePreferido: usuario.nombrePreferido || null,
+            motivoNoAfiliacion: usuario.motivoNoAfiliacion ?? null,
             nombreCompletoContacto: usuario.nombreCompletoContacto || null,
             identificacion: usuario.identificacion || null,
             tipoIdentificacion: usuario.tipoIdentificacion || null,
-            idContacto: usuario.idContacto || null,
+            idContacto:
+              usuario.idContacto !== undefined && usuario.idContacto !== null
+                ? String(usuario.idContacto)
+                : null,
             correoApp: usuario.correoApp || null,
-            emailValidado: usuario.emailValidado || null,
-            metodoAuth: usuario.metodoAuth || null,
+            emailValidado: usuario.emailValidado ?? null,
+            metodoAuth: usuario.metodoAuth ?? null,
             telefonoApp: usuario.telefonoApp || null,
-            telefonoValidado: usuario.telefonoValidado || null,
+            telefonoValidado: usuario.telefonoValidado ?? null,
             fotoPerfilApp: usuario.fotoPerfilApp || null,
           })
         );
@@ -795,7 +807,7 @@ export default function Home() {
 
         {/* Modal para Motivo de No Afiliación */}
         {isModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
               {/* Header del Modal */}
               <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">

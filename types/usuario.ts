@@ -5,6 +5,7 @@ export interface UsuarioDigitalUI {
   ultimoInicioSesionApp?: string;
   idUsuarioDigital: string;
   nombrePreferido?: string | null;
+  motivoNoAfiliacion?: string | null;
   nombreCompletoContacto?: string | null;
   identificacion?: string | null;
   tipoIdentificacion?: string | null;
@@ -21,12 +22,13 @@ export interface UsuarioDigitalUI {
 export interface UsuarioDigitalFromAPI {
   fechaUsuarioDigital?: string | Date;
   ultimoInicioSesionApp?: string | Date;
-  idUsuarioDigital: string;
+  idUsuarioDigital: string | number;
   nombrePreferido?: string;
+  motivoNoAfiliacion?: string | null;
   nombreCompletoContacto?: string;
   identificacion?: string;
   tipoIdentificacion?: string;
-  idContacto?: string;
+  idContacto?: string | number | null;
   correoApp?: string;
   emailValidado?: boolean;
   metodoAuth?: string;
