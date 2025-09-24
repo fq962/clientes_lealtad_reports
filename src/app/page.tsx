@@ -49,6 +49,14 @@ export default function Home() {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 50;
+  const [showAll, setShowAll] = useState(false);
+
+  // Búsqueda
+  const [searchQuery, setSearchQuery] = useState("");
+
   // Estados para el modal de motivo de no afiliación
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UsuarioDigitalUI | null>(
@@ -216,6 +224,7 @@ export default function Home() {
     const today = getTodayDate();
     setStartDate(today);
     setEndDate(today);
+    setCurrentPage(1);
 
     // Mostrar indicador de carga y forzar nueva consulta
     setIsLoading(true);
@@ -300,6 +309,95 @@ export default function Home() {
       return 0;
     });
   };
+
+  // Datos visibles según paginación
+  const getFilteredData = () => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter((c) => {
+      const telefono = (c.telefonoApp || "").toLowerCase();
+      const nombrePref = (c.nombrePreferido || "").toLowerCase();
+      const correo = (c.correoApp || "").toLowerCase();
+      const nombreContacto = (c.nombreCompletoContacto || "").toLowerCase();
+      const identificacion = (c.identificacion || "").toLowerCase();
+      return (
+        telefono.includes(q) ||
+        nombrePref.includes(q) ||
+        correo.includes(q) ||
+        nombreContacto.includes(q) ||
+        identificacion.includes(q)
+      );
+    });
+  };
+
+  const getVisibleData = () => {
+    const filtered = getFilteredData();
+    // Ordenar sobre el conjunto filtrado
+    const sorted = (() => {
+      if (!sortColumn) return filtered;
+      // Reutilizar la lógica de getSortedData aplicándola al subconjunto filtrado
+      return [...filtered].sort((a, b) => {
+        let valueA = a[sortColumn as keyof UsuarioDigitalUI];
+        let valueB = b[sortColumn as keyof UsuarioDigitalUI];
+        if (valueA === null || valueA === undefined)
+          valueA = "" as unknown as typeof valueA;
+        if (valueB === null || valueB === undefined)
+          valueB = "" as unknown as typeof valueB;
+        const strA = String(valueA).toLowerCase();
+        const strB = String(valueB).toLowerCase();
+        if (sortColumn === "fechaUsuarioDigital") {
+          const parseSpanishDate = (
+            dateStr: string | boolean | null | undefined
+          ) => {
+            const str = String(dateStr || "");
+            if (!str) return new Date("1900-01-01");
+            const [datePart, timePart] = str.split(", ");
+            const [day, month, year] = datePart.split("/");
+            const [hour, minute] = timePart
+              ? timePart.split(":")
+              : ["00", "00"];
+            const yearNum = parseInt(year, 10);
+            const monthNum = parseInt(month, 10);
+            const dayNum = parseInt(day, 10);
+            const hourNum = parseInt(hour, 10);
+            const minuteNum = parseInt(minute, 10);
+            const utcMs = Date.UTC(
+              yearNum,
+              monthNum - 1,
+              dayNum,
+              hourNum + 6,
+              minuteNum
+            );
+            return new Date(utcMs);
+          };
+          const dateA = parseSpanishDate(valueA);
+          const dateB = parseSpanishDate(valueB);
+          return sortDirection === "asc"
+            ? dateA.getTime() - dateB.getTime()
+            : dateB.getTime() - dateA.getTime();
+        }
+        if (strA < strB) return sortDirection === "asc" ? -1 : 1;
+        if (strA > strB) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    })();
+    if (showAll) return sorted;
+    const startIdx = (currentPage - 1) * rowsPerPage;
+    const endIdx = startIdx + rowsPerPage;
+    return sorted.slice(startIdx, endIdx);
+  };
+  const filteredCount = getFilteredData().length;
+  const totalPages = Math.max(1, Math.ceil(filteredCount / rowsPerPage));
+
+  // Reiniciar a la primera página cuando cambian filtros/orden
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, sortColumn, sortDirection]);
+
+  // Reiniciar página cuando cambia búsqueda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   // Función para contar registros sin contacto
   const getContactStats = () => {
@@ -469,9 +567,9 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Filtros */}
+        {/* Filtros y Búsqueda */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+          <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
             <div className="flex-1">
               <label
                 htmlFor="startDate"
@@ -502,6 +600,22 @@ export default function Home() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
               />
             </div>
+            <div className="flex-1 w-full">
+              <label
+                htmlFor="searchQuery"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
+                Buscar (teléfono, preferido, correo, contacto, identificación)
+              </label>
+              <input
+                type="text"
+                id="searchQuery"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Ej: 9876, maria, @gmail.com, juan perez, 0501..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+              />
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={clearFilters}
@@ -514,13 +628,18 @@ export default function Home() {
                 <div className="px-4 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
                   {isLoading
                     ? "Cargando..."
-                    : `${clientes.length} resultado${
-                        clientes.length !== 1 ? "s" : ""
+                    : `${filteredCount} resultado${
+                        filteredCount !== 1 ? "s" : ""
                       }`}
                 </div>
                 {!isLoading && clientes.length > 0 && (
                   <div className="px-3 py-2 text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-md border border-red-200 dark:border-red-800">
-                    Sin Contacto: {getContactStats().withoutContact}
+                    Sin Contacto:{" "}
+                    {
+                      getVisibleData().filter(
+                        (row) => !row.idContacto || row.idContacto === ""
+                      ).length
+                    }
                   </div>
                 )}
                 {sortColumn && (
@@ -670,7 +789,7 @@ export default function Home() {
                     </td>
                   </tr>
                 ) : (
-                  getSortedData().map((row, index) => {
+                  getVisibleData().map((row, index) => {
                     const isContactNull =
                       !row.idContacto ||
                       row.idContacto === null ||
@@ -803,6 +922,53 @@ export default function Home() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Controles de paginación */}
+        <div className="bg-white dark:bg-gray-800 rounded-b-lg border border-t-0 border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            {showAll
+              ? `Mostrando todos (${clientes.length})`
+              : `Página ${currentPage} de ${totalPages} (${Math.min(
+                  rowsPerPage,
+                  Math.max(0, clientes.length - (currentPage - 1) * rowsPerPage)
+                )} de ${clientes.length})`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={showAll || currentPage <= 1}
+              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                showAll || currentPage <= 1
+                  ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                  : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
+              title="Anterior"
+            >
+              ◀ Anterior
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={showAll || currentPage >= totalPages}
+              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                showAll || currentPage >= totalPages
+                  ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                  : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+              }`}
+              title="Siguiente"
+            >
+              Siguiente ▶
+            </button>
+            <button
+              onClick={() => {
+                setShowAll((v) => !v);
+                setCurrentPage(1);
+              }}
+              className="px-3 py-1.5 text-sm rounded-md border border-blue-600 text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+            >
+              {showAll ? "Ver 50 por página" : "Ver todo"}
+            </button>
           </div>
         </div>
 
