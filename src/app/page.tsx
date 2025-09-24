@@ -316,7 +316,9 @@ export default function Home() {
     setSelectedUser(user);
     // Si ya existe un motivo, pre-llenarlo en el textarea
     const existingMotivo =
-      motivosNoAfiliacion[user.idUsuarioDigital || ""] || "";
+      motivosNoAfiliacion[user.idUsuarioDigital || ""] ||
+      user.motivoNoAfiliacion ||
+      "";
     setMotivoNoAfiliacion(existingMotivo);
     setIsModalOpen(true);
   };
@@ -352,6 +354,15 @@ export default function Home() {
               ...prev,
               [userId]: motivoNoAfiliacion.trim(),
             }));
+
+            // Reflejar de inmediato en la tabla
+            setClientes((prev) =>
+              prev.map((u) =>
+                u.idUsuarioDigital === userId
+                  ? { ...u, motivoNoAfiliacion: motivoNoAfiliacion.trim() }
+                  : u
+              )
+            );
 
             console.log("✅ Motivo guardado en BD para usuario:", userId);
             alert(
@@ -734,14 +745,26 @@ export default function Home() {
                         </td>
                         {/* 7. Motivo No Afiliación - 200px */}
                         <td className="w-48 px-3 py-3 text-sm text-gray-900 dark:text-gray-100">
-                          {motivosNoAfiliacion[row.idUsuarioDigital || ""] ? (
+                          {(row.motivoNoAfiliacion &&
+                            row.motivoNoAfiliacion.trim() !== "") ||
+                          motivosNoAfiliacion[row.idUsuarioDigital || ""] ? (
                             <p
                               className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed"
                               title={
-                                motivosNoAfiliacion[row.idUsuarioDigital || ""]
+                                row.motivoNoAfiliacion &&
+                                row.motivoNoAfiliacion.trim() !== ""
+                                  ? row.motivoNoAfiliacion
+                                  : motivosNoAfiliacion[
+                                      row.idUsuarioDigital || ""
+                                    ]
                               }
                             >
-                              {motivosNoAfiliacion[row.idUsuarioDigital || ""]}
+                              {row.motivoNoAfiliacion &&
+                              row.motivoNoAfiliacion.trim() !== ""
+                                ? row.motivoNoAfiliacion
+                                : motivosNoAfiliacion[
+                                    row.idUsuarioDigital || ""
+                                  ]}
                             </p>
                           ) : (
                             <span className="text-gray-400 dark:text-gray-500 text-xs italic">
