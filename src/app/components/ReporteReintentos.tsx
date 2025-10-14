@@ -31,6 +31,11 @@ export default function ReporteReintentos({
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [soloFrecuentes, setSoloFrecuentes] = useState<boolean>(false);
+  const [motivosMap, setMotivosMap] = useState<Record<string, string>>({});
+  const [motivoModalOpen, setMotivoModalOpen] = useState<boolean>(false);
+  const [motivoDraft, setMotivoDraft] = useState<string>("");
+  const [motivoTargetKey, setMotivoTargetKey] = useState<string>("");
+  const [motivoTargetLabel, setMotivoTargetLabel] = useState<string>("");
   type JsonModal = {
     id: number;
     title: string;
@@ -47,6 +52,14 @@ export default function ReporteReintentos({
     y: 0,
   });
   const nextZRef = useRef<number>(1000);
+
+  // Optimización de arrastre: refs para rAF y estado pendiente
+  const draggingIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    draggingIdRef.current = draggingId;
+  }, [draggingId]);
+  const dragRafIdRef = useRef<number | null>(null);
+  const dragPendingRef = useRef<{ x: number; y: number } | null>(null);
 
   const formatHondurasDate = (value: string | Date | null) => {
     if (!value) return "";
@@ -255,30 +268,43 @@ export default function ReporteReintentos({
   useEffect(() => {
     if (draggingId === null) return;
     const onMove = (e: MouseEvent) => {
-      setJsonModals((prev) =>
-        prev.map((m) =>
-          m.id === draggingId
-            ? {
-                ...m,
-                x: Math.max(
-                  8,
-                  Math.min(window.innerWidth - 320, e.clientX - dragOffset.x)
-                ),
-                y: Math.max(
-                  8,
-                  Math.min(window.innerHeight - 120, e.clientY - dragOffset.y)
-                ),
-              }
-            : m
-        )
-      );
+      dragPendingRef.current = { x: e.clientX, y: e.clientY };
+      if (dragRafIdRef.current === null) {
+        dragRafIdRef.current = requestAnimationFrame(() => {
+          const pending = dragPendingRef.current;
+          dragRafIdRef.current = null;
+          if (!pending || draggingIdRef.current === null) return;
+          const { x, y } = pending;
+          setJsonModals((prev) =>
+            prev.map((m) =>
+              m.id === draggingIdRef.current
+                ? {
+                    ...m,
+                    x: Math.max(
+                      8,
+                      Math.min(window.innerWidth - 320, x - dragOffset.x)
+                    ),
+                    y: Math.max(
+                      8,
+                      Math.min(window.innerHeight - 120, y - dragOffset.y)
+                    ),
+                  }
+                : m
+            )
+          );
+        });
+      }
     };
     const onUp = () => setDraggingId(null);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("mouseup", onUp, { passive: true });
     return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mousemove", onMove as EventListener);
+      window.removeEventListener("mouseup", onUp as EventListener);
+      if (dragRafIdRef.current !== null)
+        cancelAnimationFrame(dragRafIdRef.current);
+      dragRafIdRef.current = null;
+      dragPendingRef.current = null;
     };
   }, [draggingId, dragOffset.x, dragOffset.y]);
 
@@ -318,6 +344,166 @@ export default function ReporteReintentos({
     });
   }, [rows, soloFrecuentes, countsByUserId]);
 
+  // Helpers para exportar CSV compatible con Excel
+  const csvEscape = (value: string): string => {
+    const safe = (value ?? "")
+      .toString()
+      .replace(/\r?\n|\r/g, " ")
+      .replace(/"/g, '""');
+    return `"${safe}"`;
+  };
+
+  const stringifyJsonForCsv = (value: unknown): string => {
+    try {
+      const parsed = deepJsonParse(value);
+      if (typeof parsed === "string") return parsed;
+      return JSON.stringify(parsed);
+    } catch {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value ?? "");
+      }
+    }
+  };
+
+  const exportToCsv = () => {
+    try {
+      const headers = [
+        "id",
+        "id_usuario_digital",
+        "motivo",
+        "tipo_evento",
+        "ocr_identificacion",
+        "analisis_similitud",
+        "imagen_frontal",
+        "imagen_trasera",
+        "selfie",
+        "fecha_registro",
+      ];
+
+      const lines: string[] = [];
+      // Sugerir a Excel separador por coma
+      lines.push("sep=,");
+      lines.push(headers.map(csvEscape).join(","));
+
+      for (const r of visibleRows) {
+        const key =
+          r.id_usuario_digital != null && String(r.id_usuario_digital)
+            ? String(r.id_usuario_digital)
+            : r.id != null && String(r.id)
+            ? `id:${String(r.id)}`
+            : "";
+        const motivo = key ? motivosMap[key] || "" : "";
+        const displayTipo = (() => {
+          const idTipo = r.id_tipo_evento ?? null;
+          if (idTipo === 2 || idTipo === "2") return "OPEN AI";
+          if (idTipo === 3 || idTipo === "3") return "LAMDA";
+          return r.tipo_evento ?? "";
+        })();
+
+        const rowValues = [
+          r.id == null ? "" : String(r.id),
+          r.id_usuario_digital == null ? "" : String(r.id_usuario_digital),
+          motivo,
+          displayTipo,
+          stringifyJsonForCsv(r.ocr_identificacion),
+          stringifyJsonForCsv(r.analisis_similitud),
+          r.imagen_frontal ? String(r.imagen_frontal) : "",
+          r.imagen_trasera ? String(r.imagen_trasera) : "",
+          r.selfie ? String(r.selfie) : "",
+          r.fecha_registro ? formatHondurasDate(r.fecha_registro) : "",
+        ];
+        lines.push(rowValues.map(csvEscape).join(","));
+      }
+
+      const csvContent = "\ufeff" + lines.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const fileName = `reintentos_${ts.getFullYear()}${pad(
+        ts.getMonth() + 1
+      )}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(
+        ts.getSeconds()
+      )}.csv`;
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exportando CSV:", err);
+      alert("No se pudo exportar el CSV");
+    }
+  };
+
+  // Persistencia local de motivos (localStorage)
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem("motivosReintentos");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            setMotivosMap(parsed as Record<string, string>);
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("motivosReintentos", JSON.stringify(motivosMap));
+      }
+    } catch {}
+  }, [motivosMap]);
+
+  const getRowKey = (r: Reintento): string => {
+    if (r.id_usuario_digital != null && String(r.id_usuario_digital)) {
+      return String(r.id_usuario_digital);
+    }
+    if (r.id != null && String(r.id)) {
+      return `id:${String(r.id)}`;
+    }
+    return "";
+  };
+
+  const openMotivoModalFor = (r: Reintento) => {
+    const key = getRowKey(r);
+    if (!key) return;
+    setMotivoTargetKey(key);
+    setMotivoTargetLabel(key);
+    setMotivoDraft(motivosMap[key] || "");
+    setMotivoModalOpen(true);
+  };
+
+  const closeMotivoModal = () => {
+    setMotivoModalOpen(false);
+    setMotivoDraft("");
+    setMotivoTargetKey("");
+    setMotivoTargetLabel("");
+  };
+
+  const saveMotivo = () => {
+    if (!motivoTargetKey) return;
+    const value = motivoDraft.trim();
+    setMotivosMap((prev) => {
+      const next = { ...prev };
+      if (value === "") {
+        delete next[motivoTargetKey];
+      } else {
+        next[motivoTargetKey] = value;
+      }
+      return next;
+    });
+    closeMotivoModal();
+  };
+
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -330,10 +516,20 @@ export default function ReporteReintentos({
           />
           <span>Mostrar solo IDs con más de 2 intentos</span>
         </label>
-        <div className="text-xs px-3 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-          {isLoading
-            ? "Filtrando..."
-            : `${visibleRows.length} registros visibles`}
+        <div className="flex items-center gap-2">
+          <div className="text-xs px-3 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+            {isLoading
+              ? "Filtrando..."
+              : `${visibleRows.length} registros visibles`}
+          </div>
+          <button
+            type="button"
+            onClick={exportToCsv}
+            className="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-700/30"
+            title="Exportar filas visibles a Excel (CSV)"
+          >
+            Exportar a Excel
+          </button>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -345,6 +541,9 @@ export default function ReporteReintentos({
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 id_usuario_digital
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                Motivo
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 tipo_evento
@@ -373,7 +572,7 @@ export default function ReporteReintentos({
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
                 >
                   <div className="flex items-center justify-center">
@@ -385,7 +584,7 @@ export default function ReporteReintentos({
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
                 >
                   No hay datos de reintentos para el rango seleccionado
@@ -412,6 +611,31 @@ export default function ReporteReintentos({
                     </td>
                     <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
                       {r.id_usuario_digital ?? "-"}
+                    </td>
+                    <td
+                      className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 cursor-pointer"
+                      onDoubleClick={() => openMotivoModalFor(r)}
+                      title="Doble clic para agregar/editar motivo de reintento"
+                    >
+                      {(() => {
+                        const key = getRowKey(r);
+                        const val = key ? motivosMap[key] : "";
+                        if (val && val.trim() !== "") {
+                          return (
+                            <span
+                              className="inline-block max-w-[320px] truncate align-middle"
+                              title={val}
+                            >
+                              {val}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-gray-400 italic">
+                            Agregar motivo…
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 truncate">
                       {(() => {
@@ -541,15 +765,64 @@ export default function ReporteReintentos({
           </tbody>
         </table>
       </div>
+      {motivoModalOpen && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                Motivo de Reintento
+              </h3>
+              <button
+                type="button"
+                onClick={closeMotivoModal}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                aria-label="Cerrar"
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                ID: {motivoTargetLabel}
+              </div>
+              <textarea
+                rows={4}
+                value={motivoDraft}
+                onChange={(ev) => setMotivoDraft(ev.target.value)}
+                placeholder="Escribe el motivo de reintento..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white resize-none"
+              />
+            </div>
+            <div className="px-4 pb-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeMotivoModal}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500 focus:ring-2 focus:ring-gray-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveMotivo}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {jsonModals.map((m) => (
         <div
           key={m.id}
-          className="fixed"
+          className="fixed will-change-transform"
           style={{
             left: m.x,
             top: m.y,
             zIndex: m.z,
             width: "min(92vw, 720px)",
+            transform: "translateZ(0)",
           }}
           onMouseDown={() => bringToFront(m.id)}
         >
