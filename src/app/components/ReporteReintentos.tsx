@@ -30,6 +30,7 @@ export default function ReporteReintentos({
   const [rows, setRows] = useState<Reintento[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [soloFrecuentes, setSoloFrecuentes] = useState<boolean>(false);
   type JsonModal = {
     id: number;
     title: string;
@@ -307,8 +308,34 @@ export default function ReporteReintentos({
     return map;
   }, [rows]);
 
+  const visibleRows = useMemo(() => {
+    if (!soloFrecuentes) return rows;
+    return rows.filter((r) => {
+      const key =
+        r.id_usuario_digital != null ? String(r.id_usuario_digital) : "";
+      if (!key) return false;
+      return (countsByUserId[key] || 0) > 3; // misma validación que el resaltado
+    });
+  }, [rows, soloFrecuentes, countsByUserId]);
+
   return (
     <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+            checked={soloFrecuentes}
+            onChange={(e) => setSoloFrecuentes(e.target.checked)}
+          />
+          <span>Mostrar solo IDs con más de 2 intentos</span>
+        </label>
+        <div className="text-xs px-3 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+          {isLoading
+            ? "Filtrando..."
+            : `${visibleRows.length} registros visibles`}
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
           <thead className="bg-gray-50 dark:bg-gray-700">
@@ -355,7 +382,7 @@ export default function ReporteReintentos({
                   </div>
                 </td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : visibleRows.length === 0 ? (
               <tr>
                 <td
                   colSpan={9}
@@ -365,7 +392,7 @@ export default function ReporteReintentos({
                 </td>
               </tr>
             ) : (
-              rows.map((r, idx) => {
+              visibleRows.map((r, idx) => {
                 const idKey =
                   r.id_usuario_digital != null
                     ? String(r.id_usuario_digital)
