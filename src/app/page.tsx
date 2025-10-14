@@ -54,6 +54,8 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 50;
   const [showAll, setShowAll] = useState(false);
+  // Forzar refetch de reintentos aunque las fechas no cambien
+  const [reintentosRefreshKey, setReintentosRefreshKey] = useState(0);
 
   // Búsqueda
   const [searchQuery, setSearchQuery] = useState("");
@@ -330,14 +332,19 @@ export default function Home() {
     setEndDate(today);
     setCurrentPage(1);
 
-    // Mostrar indicador de carga y forzar nueva consulta
-    setIsLoading(true);
-    console.log("🔄 Forzando actualización de datos para hoy...");
-
-    // Forzar nueva consulta inmediatamente
-    setTimeout(() => {
-      fetchClientes();
-    }, 100);
+    // Si estamos en "usuarios", forzar la recarga inmediata.
+    // Si estamos en "reintentos", NO llamar a fetchClientes: el componente de reintentos
+    // se actualizará por el cambio de fechas (props) en su propio efecto.
+    if (activeView === "usuarios") {
+      setIsLoading(true);
+      console.log("🔄 Forzando actualización de datos (usuarios) para hoy...");
+      setTimeout(() => {
+        fetchClientes();
+      }, 100);
+    } else {
+      // Forzar explícitamente el refetch de reintentos incluso si ya era hoy
+      setReintentosRefreshKey((k) => k + 1);
+    }
   };
 
   // Función para manejar el ordenamiento
@@ -822,7 +829,11 @@ export default function Home() {
         {/* Tabla responsiva */}
         {activeView === "reintentos" ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <ReporteReintentos startDate={startDate} endDate={endDate} />
+            <ReporteReintentos
+              startDate={startDate}
+              endDate={endDate}
+              refreshKey={reintentosRefreshKey}
+            />
           </div>
         ) : (
           <>

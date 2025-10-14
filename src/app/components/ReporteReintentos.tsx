@@ -19,9 +19,14 @@ type Reintento = {
 interface Props {
   startDate: string;
   endDate: string;
+  refreshKey?: number;
 }
 
-export default function ReporteReintentos({ startDate, endDate }: Props) {
+export default function ReporteReintentos({
+  startDate,
+  endDate,
+  refreshKey = 0,
+}: Props) {
   const [rows, setRows] = useState<Reintento[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +120,7 @@ export default function ReporteReintentos({ startDate, endDate }: Props) {
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, refreshKey]);
 
   useEffect(() => {
     fetchReintentos();
