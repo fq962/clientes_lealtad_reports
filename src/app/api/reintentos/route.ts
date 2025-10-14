@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     if (fechaInicio) params.set("fechaInicio", fechaInicio);
     if (fechaFin) params.set("fechaFin", fechaFin);
 
-    const upstream = `http://localhost:4040/v1/afiliamiento/log-reintentos-afiliacion-reporte?${params.toString()}`;
+    const upstream = `https://api.allasrepuestos.com/v1/afiliamiento/log-reintentos-afiliacion-reporte?${params.toString()}`;
 
     const resp = await fetch(upstream, {
       method: "GET",
