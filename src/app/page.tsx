@@ -6,6 +6,7 @@ import type {
   UsuarioDigitalFromAPI,
   APIResponse,
 } from "../../types/usuario";
+import ReporteReintentos from "./components/ReporteReintentos";
 
 export default function Home() {
   // Función para obtener la fecha de hoy en formato YYYY-MM-DD
@@ -56,6 +57,9 @@ export default function Home() {
 
   // Búsqueda
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeView, setActiveView] = useState<"usuarios" | "reintentos">(
+    "usuarios"
+  );
 
   // Columnas reordenables (drag & drop)
   type ColumnId =
@@ -763,6 +767,19 @@ export default function Home() {
               >
                 🔄 Hoy
               </button>
+              <button
+                onClick={() =>
+                  setActiveView((v) =>
+                    v === "usuarios" ? "reintentos" : "usuarios"
+                  )
+                }
+                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors"
+                title="Cambiar a reporte de reintentos"
+              >
+                {activeView === "reintentos"
+                  ? "Ver Usuarios"
+                  : "Reporte Reintentos"}
+              </button>
               <div className="flex gap-2 flex-wrap">
                 <div className="px-4 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
                   {isLoading
@@ -803,328 +820,343 @@ export default function Home() {
         )}
 
         {/* Tabla responsiva */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
-              <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  {columns.map((col, index) => (
-                    <th
-                      key={col.id}
-                      className={`${col.widthClass} px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider select-none`}
-                      draggable
-                      onDragStart={() => handleColumnDragStart(index)}
-                      onDragOver={handleColumnDragOver}
-                      onDrop={() => handleColumnDrop(index)}
-                      title="Arrastra para reordenar"
-                    >
-                      {col.sortable ? (
-                        <button
-                          onClick={() => handleSort(col.id)}
-                          className="flex items-center hover:text-gray-700 dark:hover:text-gray-100 transition-colors"
+        {activeView === "reintentos" ? (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <ReporteReintentos startDate={startDate} endDate={endDate} />
+          </div>
+        ) : (
+          <>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      {columns.map((col, index) => (
+                        <th
+                          key={col.id}
+                          className={`${col.widthClass} px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider select-none`}
+                          draggable
+                          onDragStart={() => handleColumnDragStart(index)}
+                          onDragOver={handleColumnDragOver}
+                          onDrop={() => handleColumnDrop(index)}
+                          title="Arrastra para reordenar"
                         >
-                          {col.header}
-                          <SortIcon column={col.id} />
-                        </button>
-                      ) : (
-                        <span>{col.header}</span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={10}
-                      className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
-                    >
-                      <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                        <span className="ml-3">Cargando datos...</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : clientes.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={10}
-                      className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
-                    >
-                      No se encontraron registros para el rango de fechas
-                      seleccionado
-                    </td>
-                  </tr>
-                ) : (
-                  getVisibleData().map((row, index) => {
-                    const isContactNull =
-                      !row.idContacto ||
-                      row.idContacto === null ||
-                      row.idContacto === "";
-                    return (
-                      <tr
-                        key={index}
-                        className={`transition-colors cursor-pointer ${
-                          isContactNull
-                            ? "bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 border-l-4 border-red-500"
-                            : "hover:bg-gray-50 dark:hover:bg-gray-700"
-                        }`}
-                        onDoubleClick={() => handleRowDoubleClick(row)}
-                        title="Doble clic para agregar motivo de no afiliación"
-                      >
-                        {columns.map((col) => {
-                          switch (col.id) {
-                            case "fechaUsuarioDigital":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  <div className="font-mono text-xs leading-tight">
-                                    {row.fechaUsuarioDigital}
-                                  </div>
-                                </td>
-                              );
-                            case "idUsuarioDigital":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 whitespace-nowrap text-sm font-medium text-blue-600 dark:text-blue-400`}
-                                >
-                                  <div className="truncate text-xs">
-                                    {row.idUsuarioDigital}
-                                  </div>
-                                </td>
-                              );
-                            case "nombrePreferido":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  <div className="truncate text-xs font-medium">
-                                    {row.nombrePreferido || "-"}
-                                  </div>
-                                </td>
-                              );
-                            case "idContacto":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  {row.idContacto ? (
-                                    <div className="truncate text-xs text-gray-900 dark:text-gray-100">
-                                      {row.idContacto}
-                                    </div>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                                      SIN CONTACTO
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            case "correoApp":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  {row.correoApp ? (
-                                    <a
-                                      href={`mailto:${row.correoApp}`}
-                                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs truncate block"
-                                      title={row.correoApp}
-                                    >
-                                      {row.correoApp}
-                                    </a>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">
-                                      -
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            case "telefonoApp":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  {row.telefonoApp ? (
-                                    <a
-                                      href={`tel:${row.telefonoApp}`}
-                                      className="text-blue-600 dark:text-blue-400 hover:underline text-xs font-mono truncate block"
-                                    >
-                                      {row.telefonoApp}
-                                    </a>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">
-                                      -
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            case "motivoNoAfiliacion":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  {(row.motivoNoAfiliacion &&
-                                    row.motivoNoAfiliacion.trim() !== "") ||
-                                  motivosNoAfiliacion[
-                                    row.idUsuarioDigital || ""
-                                  ] ? (
-                                    <p
-                                      className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed"
-                                      title={
-                                        row.motivoNoAfiliacion &&
-                                        row.motivoNoAfiliacion.trim() !== ""
-                                          ? row.motivoNoAfiliacion
-                                          : motivosNoAfiliacion[
-                                              row.idUsuarioDigital || ""
-                                            ]
-                                      }
-                                    >
-                                      {row.motivoNoAfiliacion &&
-                                      row.motivoNoAfiliacion.trim() !== ""
-                                        ? row.motivoNoAfiliacion
-                                        : motivosNoAfiliacion[
-                                            row.idUsuarioDigital || ""
-                                          ]}
-                                    </p>
-                                  ) : (
-                                    <span className="text-gray-400 dark:text-gray-500 text-xs italic">
-                                      Sin motivo registrado
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            case "nombreCompletoContacto":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  <div
-                                    className="truncate text-xs"
-                                    title={row.nombreCompletoContacto || ""}
-                                  >
-                                    {row.nombreCompletoContacto || "-"}
-                                  </div>
-                                </td>
-                              );
-                            case "identificacion":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  <div className="text-xs font-mono truncate">
-                                    {row.identificacion || "-"}
-                                  </div>
-                                </td>
-                              );
-                            case "tipoIdentificacion":
-                              return (
-                                <td
-                                  key={col.id}
-                                  className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                >
-                                  {row.tipoIdentificacion ? (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                      {row.tipoIdentificacion}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">
-                                      -
-                                    </span>
-                                  )}
-                                </td>
-                              );
-                            default:
-                              return null;
-                          }
-                        })}
+                          {col.sortable ? (
+                            <button
+                              onClick={() => handleSort(col.id)}
+                              className="flex items-center hover:text-gray-700 dark:hover:text-gray-100 transition-colors"
+                            >
+                              {col.header}
+                              <SortIcon column={col.id} />
+                            </button>
+                          ) : (
+                            <span>{col.header}</span>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {isLoading ? (
+                      <tr>
+                        <td
+                          colSpan={10}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <span className="ml-3">Cargando datos...</span>
+                          </div>
+                        </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    ) : clientes.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={10}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          No se encontraron registros para el rango de fechas
+                          seleccionado
+                        </td>
+                      </tr>
+                    ) : (
+                      getVisibleData().map((row, index) => {
+                        const isContactNull =
+                          !row.idContacto ||
+                          row.idContacto === null ||
+                          row.idContacto === "";
+                        return (
+                          <tr
+                            key={index}
+                            className={`transition-colors cursor-pointer ${
+                              isContactNull
+                                ? "bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 border-l-4 border-red-500"
+                                : "hover:bg-gray-50 dark:hover:bg-gray-700"
+                            }`}
+                            onDoubleClick={() => handleRowDoubleClick(row)}
+                            title="Doble clic para agregar motivo de no afiliación"
+                          >
+                            {columns.map((col) => {
+                              switch (col.id) {
+                                case "fechaUsuarioDigital":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      <div className="font-mono text-xs leading-tight">
+                                        {row.fechaUsuarioDigital}
+                                      </div>
+                                    </td>
+                                  );
+                                case "idUsuarioDigital":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 whitespace-nowrap text-sm font-medium text-blue-600 dark:text-blue-400`}
+                                    >
+                                      <div className="truncate text-xs">
+                                        {row.idUsuarioDigital}
+                                      </div>
+                                    </td>
+                                  );
+                                case "nombrePreferido":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      <div className="truncate text-xs font-medium">
+                                        {row.nombrePreferido || "-"}
+                                      </div>
+                                    </td>
+                                  );
+                                case "idContacto":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      {row.idContacto ? (
+                                        <div className="truncate text-xs text-gray-900 dark:text-gray-100">
+                                          {row.idContacto}
+                                        </div>
+                                      ) : (
+                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                          SIN CONTACTO
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
+                                case "correoApp":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      {row.correoApp ? (
+                                        <a
+                                          href={`mailto:${row.correoApp}`}
+                                          className="text-blue-600 dark:text-blue-400 hover:underline text-xs truncate block"
+                                          title={row.correoApp}
+                                        >
+                                          {row.correoApp}
+                                        </a>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
+                                case "telefonoApp":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      {row.telefonoApp ? (
+                                        <a
+                                          href={`tel:${row.telefonoApp}`}
+                                          className="text-blue-600 dark:text-blue-400 hover:underline text-xs font-mono truncate block"
+                                        >
+                                          {row.telefonoApp}
+                                        </a>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
+                                case "motivoNoAfiliacion":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      {(row.motivoNoAfiliacion &&
+                                        row.motivoNoAfiliacion.trim() !== "") ||
+                                      motivosNoAfiliacion[
+                                        row.idUsuarioDigital || ""
+                                      ] ? (
+                                        <p
+                                          className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed"
+                                          title={
+                                            row.motivoNoAfiliacion &&
+                                            row.motivoNoAfiliacion.trim() !== ""
+                                              ? row.motivoNoAfiliacion
+                                              : motivosNoAfiliacion[
+                                                  row.idUsuarioDigital || ""
+                                                ]
+                                          }
+                                        >
+                                          {row.motivoNoAfiliacion &&
+                                          row.motivoNoAfiliacion.trim() !== ""
+                                            ? row.motivoNoAfiliacion
+                                            : motivosNoAfiliacion[
+                                                row.idUsuarioDigital || ""
+                                              ]}
+                                        </p>
+                                      ) : (
+                                        <span className="text-gray-400 dark:text-gray-500 text-xs italic">
+                                          Sin motivo registrado
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
+                                case "nombreCompletoContacto":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      <div
+                                        className="truncate text-xs"
+                                        title={row.nombreCompletoContacto || ""}
+                                      >
+                                        {row.nombreCompletoContacto || "-"}
+                                      </div>
+                                    </td>
+                                  );
+                                case "identificacion":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      <div className="text-xs font-mono truncate">
+                                        {row.identificacion || "-"}
+                                      </div>
+                                    </td>
+                                  );
+                                case "tipoIdentificacion":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                    >
+                                      {row.tipoIdentificacion ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                          {row.tipoIdentificacion}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
+                                default:
+                                  return null;
+                              }
+                            })}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-        {/* Controles de paginación */}
-        <div className="bg-white dark:bg-gray-800 rounded-b-lg border border-t-0 border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-sm text-gray-600 dark:text-gray-300">
-            {showAll
-              ? `Mostrando todos (${clientes.length})`
-              : `Página ${currentPage} de ${totalPages} (${Math.min(
-                  rowsPerPage,
-                  Math.max(0, clientes.length - (currentPage - 1) * rowsPerPage)
-                )} de ${clientes.length})`}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={showAll || currentPage <= 1}
-              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                showAll || currentPage <= 1
-                  ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
-                  : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-              title="Anterior"
-            >
-              ◀ Anterior
-            </button>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={showAll || currentPage >= totalPages}
-              className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-                showAll || currentPage >= totalPages
-                  ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
-                  : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-              }`}
-              title="Siguiente"
-            >
-              Siguiente ▶
-            </button>
-            <button
-              onClick={() => {
-                setShowAll((v) => !v);
-                setCurrentPage(1);
-              }}
-              className="px-3 py-1.5 text-sm rounded-md border border-blue-600 text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-            >
-              {showAll ? "Ver 50 por página" : "Ver todo"}
-            </button>
-          </div>
-        </div>
+            {/* Controles de paginación */}
+            <div className="bg-white dark:bg-gray-800 rounded-b-lg border border-t-0 border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                {showAll
+                  ? `Mostrando todos (${clientes.length})`
+                  : `Página ${currentPage} de ${totalPages} (${Math.min(
+                      rowsPerPage,
+                      Math.max(
+                        0,
+                        clientes.length - (currentPage - 1) * rowsPerPage
+                      )
+                    )} de ${clientes.length})`}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={showAll || currentPage <= 1}
+                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                    showAll || currentPage <= 1
+                      ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                      : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                  title="Anterior"
+                >
+                  ◀ Anterior
+                </button>
+                <button
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
+                  disabled={showAll || currentPage >= totalPages}
+                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                    showAll || currentPage >= totalPages
+                      ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                      : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                  title="Siguiente"
+                >
+                  Siguiente ▶
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAll((v) => !v);
+                    setCurrentPage(1);
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-md border border-blue-600 text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                >
+                  {showAll ? "Ver 50 por página" : "Ver todo"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Footer con información adicional */}
-        <div className="mt-6 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 dark:text-gray-400">
-          <div>
-            {isLoading ? (
-              "Cargando..."
-            ) : (
-              <>
-                Mostrando {clientes.length} registros
-                {(startDate || endDate) && (
-                  <span className="ml-2 text-blue-600 dark:text-blue-400">
-                    (filtrado{startDate && ` desde ${startDate}`}
-                    {endDate && ` hasta ${endDate}`})
-                  </span>
-                )}
-              </>
-            )}
+        {activeView !== "reintentos" && (
+          <div className="mt-6 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 dark:text-gray-400">
+            <div>
+              {isLoading ? (
+                "Cargando..."
+              ) : (
+                <>
+                  Mostrando {clientes.length} registros
+                  {(startDate || endDate) && (
+                    <span className="ml-2 text-blue-600 dark:text-blue-400">
+                      (filtrado{startDate && ` desde ${startDate}`}
+                      {endDate && ` hasta ${endDate}`})
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="mt-2 sm:mt-0">
+              Última actualización: {formatHondurasDate(new Date())}
+            </div>
           </div>
-          <div className="mt-2 sm:mt-0">
-            Última actualización: {formatHondurasDate(new Date())}
-          </div>
-        </div>
+        )}
 
         {/* Modal para Motivo de No Afiliación */}
         {isModalOpen && (
