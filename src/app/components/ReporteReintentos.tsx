@@ -14,6 +14,8 @@ type Reintento = {
   imagen_trasera: string | null;
   selfie: string | null;
   fecha_registro: string | null;
+  motivo_reintento?: string | null;
+  tipo_motivo_reintento?: string | null;
 };
 
 interface Props {
@@ -130,6 +132,8 @@ export default function ReporteReintentos({
           imagen_trasera: r?.imagen_trasera ?? null,
           selfie: r?.selfie ?? null,
           fecha_registro: r?.fecha_registro ?? null,
+          motivo_reintento: r?.motivo_reintento ?? null,
+          tipo_motivo_reintento: r?.tipo_motivo_reintento ?? null,
         } as Reintento;
       });
       setRows(mapped);
@@ -701,6 +705,17 @@ export default function ReporteReintentos({
                       title="Doble clic para agregar/editar motivo de reintento"
                     >
                       {(() => {
+                        const fromApi = (r.motivo_reintento || "").toString();
+                        if (fromApi && fromApi.trim() !== "") {
+                          return (
+                            <span
+                              className="inline-block max-w-[320px] truncate align-middle"
+                              title={fromApi}
+                            >
+                              {fromApi}
+                            </span>
+                          );
+                        }
                         const key = getRowKey(r);
                         const val = key ? motivosMap[key] : "";
                         if (val && val.trim() !== "") {
@@ -722,8 +737,12 @@ export default function ReporteReintentos({
                     </td>
                     <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
                       {(() => {
+                        const fromApi = (
+                          r.tipo_motivo_reintento || ""
+                        ).toString();
                         const key = getRowKey(r);
-                        const value = key ? errorTipoMap[key] || "" : "";
+                        const value =
+                          fromApi || (key ? errorTipoMap[key] || "" : "");
                         const onChange = (
                           ev: React.ChangeEvent<HTMLSelectElement>
                         ) => {
