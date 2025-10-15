@@ -27,14 +27,19 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const idFromBody = body?.idUsuarioDigital;
-    // La UI envía "motivo"; tu API espera "motivoNoAfiliacion"
-    const motivo = body?.motivo ?? body?.motivoNoAfiliacion;
+    const motivoNoAfiliacion = body?.motivoNoAfiliacion ?? body?.motivo;
+    const tipoMotivoReintento =
+      body?.tipoMotivoReintento !== undefined ? body.tipoMotivoReintento : null;
 
-    if (idFromBody === undefined || idFromBody === null || !motivo) {
+    if (
+      idFromBody === undefined ||
+      idFromBody === null ||
+      !motivoNoAfiliacion
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "ID de usuario y motivo son requeridos",
+          error: "ID de usuario y motivoNoAfiliacion son requeridos",
         },
         { status: 400 }
       );
@@ -49,7 +54,7 @@ export async function POST(request: NextRequest) {
     }
 
     const resp = await fetch(
-      "https://api.allasrepuestos.com/v1/afiliamiento/insertar-motivo-no-afiliacion",
+      "http://localhost:4040/v1/afiliamiento/insertar-motivo-no-afiliacion",
       {
         method: "POST",
         headers: {
@@ -59,7 +64,8 @@ export async function POST(request: NextRequest) {
         cache: "no-store",
         body: JSON.stringify({
           idUsuarioDigital: idUsuarioDigitalNum,
-          motivoNoAfiliacion: String(motivo),
+          motivoNoAfiliacion: String(motivoNoAfiliacion),
+          tipoMotivoReintento: tipoMotivoReintento ?? null,
         }),
       }
     );

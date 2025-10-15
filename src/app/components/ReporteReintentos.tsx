@@ -36,6 +36,12 @@ export default function ReporteReintentos({
   const [motivoDraft, setMotivoDraft] = useState<string>("");
   const [motivoTargetKey, setMotivoTargetKey] = useState<string>("");
   const [motivoTargetLabel, setMotivoTargetLabel] = useState<string>("");
+  const [errorTipoMap, setErrorTipoMap] = useState<Record<string, string>>({});
+  // Lazy loading de filas
+  const INITIAL_PAGE_SIZE = 100;
+  const PAGE_INCREMENT = 100;
+  const [visibleCount, setVisibleCount] = useState<number>(INITIAL_PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   type JsonModal = {
     id: number;
     title: string;
@@ -344,6 +350,27 @@ export default function ReporteReintentos({
     });
   }, [rows, soloFrecuentes, countsByUserId]);
 
+  // Reset de paginación/lazy cuando cambian los datos visibles
+  useEffect(() => {
+    setVisibleCount(INITIAL_PAGE_SIZE);
+  }, [visibleRows]);
+
+  // IntersectionObserver para "cargar más" al final
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry.isIntersecting) {
+        setVisibleCount((prev) =>
+          Math.min(prev + PAGE_INCREMENT, visibleRows.length)
+        );
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [visibleRows.length]);
+
   // Helpers para exportar CSV compatible con Excel
   const csvEscape = (value: string): string => {
     const safe = (value ?? "")
@@ -373,6 +400,7 @@ export default function ReporteReintentos({
         "id",
         "id_usuario_digital",
         "motivo",
+        "tipo_error",
         "tipo_evento",
         "ocr_identificacion",
         "analisis_similitud",
@@ -406,6 +434,7 @@ export default function ReporteReintentos({
           r.id == null ? "" : String(r.id),
           r.id_usuario_digital == null ? "" : String(r.id_usuario_digital),
           motivo,
+          key ? errorTipoMap[key] || "" : "",
           displayTipo,
           stringifyJsonForCsv(r.ocr_identificacion),
           stringifyJsonForCsv(r.analisis_similitud),
@@ -444,11 +473,11 @@ export default function ReporteReintentos({
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        const raw = localStorage.getItem("motivosReintentos");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            setMotivosMap(parsed as Record<string, string>);
+        const rawTipos = localStorage.getItem("tiposErrorReintentos");
+        if (rawTipos) {
+          const parsedTipos = JSON.parse(rawTipos);
+          if (parsedTipos && typeof parsedTipos === "object") {
+            setErrorTipoMap(parsedTipos as Record<string, string>);
           }
         }
       }
@@ -458,10 +487,13 @@ export default function ReporteReintentos({
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        localStorage.setItem("motivosReintentos", JSON.stringify(motivosMap));
+        localStorage.setItem(
+          "tiposErrorReintentos",
+          JSON.stringify(errorTipoMap)
+        );
       }
     } catch {}
-  }, [motivosMap]);
+  }, [errorTipoMap]);
 
   const getRowKey = (r: Reintento): string => {
     if (r.id_usuario_digital != null && String(r.id_usuario_digital)) {
@@ -504,6 +536,54 @@ export default function ReporteReintentos({
     closeMotivoModal();
   };
 
+  const saveMotivoToServer = async () => {
+    try {
+      if (!motivoTargetKey) return;
+      const key = motivoTargetKey;
+      // Buscar fila por key para extraer idUsuarioDigital
+      const findByKey = (arr: Reintento[]) =>
+        arr.find((r) => getRowKey(r) === key);
+      const row = findByKey(rows) || findByKey(visibleRows);
+      const idUsuarioDigitalRaw = row?.id_usuario_digital;
+      if (idUsuarioDigitalRaw == null || idUsuarioDigitalRaw === "") {
+        alert("No se encontró idUsuarioDigital para esta fila");
+        return;
+      }
+      const idUsuarioDigital = Number(idUsuarioDigitalRaw);
+      if (Number.isNaN(idUsuarioDigital)) {
+        alert("El idUsuarioDigital no es numérico");
+        return;
+      }
+      const motivo = motivoDraft.trim();
+      if (!motivo) {
+        alert("Debes ingresar un motivo para guardar en BD");
+        return;
+      }
+      const tipoMotivoReintento = errorTipoMap[key] || null;
+
+      const resp = await fetch("/api/motivos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idUsuarioDigital,
+          motivoNoAfiliacion: motivo,
+          tipoMotivoReintento,
+        }),
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json?.success) {
+        throw new Error(json?.error || `Error ${resp.status}`);
+      }
+      // Sincronizar local
+      setMotivosMap((prev) => ({ ...prev, [key]: motivo }));
+      alert("✅ Motivo guardado en BD");
+      closeMotivoModal();
+    } catch (err) {
+      console.error("Error guardando motivo en BD:", err);
+      alert("❌ No se pudo guardar el motivo en BD");
+    }
+  };
+
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -544,6 +624,9 @@ export default function ReporteReintentos({
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 Motivo
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                TIPO ERROR
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 tipo_evento
@@ -591,7 +674,7 @@ export default function ReporteReintentos({
                 </td>
               </tr>
             ) : (
-              visibleRows.map((r, idx) => {
+              visibleRows.slice(0, visibleCount).map((r, idx) => {
                 const idKey =
                   r.id_usuario_digital != null
                     ? String(r.id_usuario_digital)
@@ -637,17 +720,57 @@ export default function ReporteReintentos({
                         );
                       })()}
                     </td>
+                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
+                      {(() => {
+                        const key = getRowKey(r);
+                        const value = key ? errorTipoMap[key] || "" : "";
+                        const onChange = (
+                          ev: React.ChangeEvent<HTMLSelectElement>
+                        ) => {
+                          const v = ev.target.value;
+                          if (!key) return;
+                          setErrorTipoMap((prev) => ({ ...prev, [key]: v }));
+                        };
+                        return (
+                          <select
+                            value={value}
+                            onChange={onChange}
+                            className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
+                          >
+                            <option value="">(sin tipo)</option>
+                            <option value="BIOMETRIA">BIOMETRIA</option>
+                            <option value="OCR">OCR</option>
+                            <option value="ERROR APP">ERROR APP</option>
+                            <option value="OTRO ERROR">OTRO ERROR</option>
+                          </select>
+                        );
+                      })()}
+                    </td>
                     <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 truncate">
                       {(() => {
-                        const idTipo = r.id_tipo_evento ?? null;
-                        if (idTipo === 2 || idTipo === "2") {
+                        const idTipo = r.id_tipo_evento;
+                        const txt = (r.tipo_evento || "")
+                          .toString()
+                          .trim()
+                          .toUpperCase();
+                        if (
+                          idTipo === 2 ||
+                          idTipo === "2" ||
+                          txt === "OPEN AI" ||
+                          txt === "OPENAI"
+                        ) {
                           return (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                               OPEN AI
                             </span>
                           );
                         }
-                        if (idTipo === 3 || idTipo === "3") {
+                        if (
+                          idTipo === 3 ||
+                          idTipo === "3" ||
+                          txt === "LAMDA" ||
+                          txt === "LAMBDA"
+                        ) {
                           return (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-200 text-amber-900 dark:bg-amber-300/30 dark:text-amber-300">
                               LAMDA
@@ -765,6 +888,23 @@ export default function ReporteReintentos({
           </tbody>
         </table>
       </div>
+      {/* Sentinel para cargar más */}
+      <div ref={sentinelRef} className="h-6" />
+      {visibleCount < visibleRows.length && (
+        <div className="mt-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() =>
+              setVisibleCount((c) =>
+                Math.min(c + PAGE_INCREMENT, visibleRows.length)
+              )
+            }
+            className="px-4 py-2 text-sm font-medium rounded-md bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            Cargar más ({visibleCount}/{visibleRows.length})
+          </button>
+        </div>
+      )}
       {motivoModalOpen && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
@@ -804,10 +944,18 @@ export default function ReporteReintentos({
               </button>
               <button
                 type="button"
+                onClick={saveMotivoToServer}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:ring-2 focus:ring-green-500 transition-colors"
+                title="Guardar en base de datos"
+              >
+                Guardar en BD
+              </button>
+              <button
+                type="button"
                 onClick={saveMotivo}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
               >
-                Guardar
+                Guardar (solo sesión)
               </button>
             </div>
           </div>
@@ -867,6 +1015,7 @@ export default function ReporteReintentos({
                     <img
                       src={m.content}
                       alt={m.title}
+                      loading="lazy"
                       className={`${
                         m.title === "Selfie"
                           ? "max-h-[56vh] max-w-[70vw]"

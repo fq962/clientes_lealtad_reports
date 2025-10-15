@@ -11,6 +11,8 @@ type ExternalItem = {
   urlImagenTrasera?: string | null;
   urlSelfie?: string | null;
   fechaRegistro?: string | null;
+  motivoReintento?: string | null;
+  tipoMotivoReintento?: string | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -60,6 +62,8 @@ export async function GET(request: NextRequest) {
         typeof i?.fechaRegistro === "string"
           ? (i?.fechaRegistro as string).replace(" ", "T")
           : null,
+      motivo_reintento: (i?.motivoReintento as string | null) ?? null,
+      tipo_motivo_reintento: (i?.tipoMotivoReintento as string | null) ?? null,
     }));
 
     return NextResponse.json({ success: true, data });
