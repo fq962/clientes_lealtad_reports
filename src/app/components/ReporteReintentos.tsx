@@ -39,6 +39,7 @@ export default function ReporteReintentos({
   const [motivoTargetKey, setMotivoTargetKey] = useState<string>("");
   const [motivoTargetLabel, setMotivoTargetLabel] = useState<string>("");
   const [errorTipoMap, setErrorTipoMap] = useState<Record<string, string>>({});
+  const [filtroTipoError, setFiltroTipoError] = useState<string>("");
   // Lazy loading de filas
   const INITIAL_PAGE_SIZE = 100;
   const PAGE_INCREMENT = 100;
@@ -345,14 +346,34 @@ export default function ReporteReintentos({
   }, [rows]);
 
   const visibleRows = useMemo(() => {
-    if (!soloFrecuentes) return rows;
-    return rows.filter((r) => {
-      const key =
-        r.id_usuario_digital != null ? String(r.id_usuario_digital) : "";
-      if (!key) return false;
-      return (countsByUserId[key] || 0) > 3; // misma validación que el resaltado
-    });
-  }, [rows, soloFrecuentes, countsByUserId]);
+    let base = rows;
+
+    if (filtroTipoError) {
+      base = base.filter((r) => {
+        const fromApi = (r.tipo_motivo_reintento || "").toString();
+        const key =
+          r.id_usuario_digital != null && String(r.id_usuario_digital)
+            ? String(r.id_usuario_digital)
+            : r.id != null && String(r.id)
+            ? `id:${String(r.id)}`
+            : "";
+        const local = key ? errorTipoMap[key] || "" : "";
+        const value = fromApi || local;
+        return value === filtroTipoError;
+      });
+    }
+
+    if (soloFrecuentes) {
+      base = base.filter((r) => {
+        const key =
+          r.id_usuario_digital != null ? String(r.id_usuario_digital) : "";
+        if (!key) return false;
+        return (countsByUserId[key] || 0) > 3; // misma validación que el resaltado
+      });
+    }
+
+    return base;
+  }, [rows, filtroTipoError, soloFrecuentes, countsByUserId, errorTipoMap]);
 
   // Reset de paginación/lazy cuando cambian los datos visibles
   useEffect(() => {
@@ -601,6 +622,20 @@ export default function ReporteReintentos({
           <span>Mostrar solo IDs con más de 2 intentos</span>
         </label>
         <div className="flex items-center gap-2">
+          <select
+            value={filtroTipoError}
+            onChange={(e) => setFiltroTipoError(e.target.value)}
+            className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
+            title="Filtrar por tipo de error"
+          >
+            <option value="">Todos los tipos</option>
+            <option value="BIOMETRIA_FALLO">FOTO MAL TOMADA</option>
+            <option value="PRUEBA_DE_IT">PRUEBA DE IT</option>
+            <option value="BIOMETRIA">BIOMETRIA</option>
+            <option value="OCR">OCR</option>
+            <option value="ERROR APP">ERROR APP</option>
+            <option value="OTRO ERROR">OTRO ERROR</option>
+          </select>
           <div className="text-xs px-3 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
             {isLoading
               ? "Filtrando..."
@@ -757,6 +792,10 @@ export default function ReporteReintentos({
                             className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
                           >
                             <option value="">(sin tipo)</option>
+                            <option value="BIOMETRIA_FALLO">
+                              FOTO MAL TOMADA
+                            </option>
+                            <option value="PRUEBA_DE_IT">PRUEBA DE IT</option>
                             <option value="BIOMETRIA">BIOMETRIA</option>
                             <option value="OCR">OCR</option>
                             <option value="ERROR APP">ERROR APP</option>
