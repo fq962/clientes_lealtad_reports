@@ -62,6 +62,10 @@ export default function Home() {
   const [activeView, setActiveView] = useState<"usuarios" | "reintentos">(
     "usuarios"
   );
+  // Filtro por origen de creación (no visible en tabla)
+  const [originFilter, setOriginFilter] = useState<"ALL" | "WEB" | "APP">(
+    "APP"
+  );
 
   // Columnas reordenables (drag & drop)
   type ColumnId =
@@ -248,6 +252,9 @@ export default function Home() {
             telefonoApp: usuario.telefonoApp || null,
             telefonoValidado: usuario.telefonoValidado ?? null,
             fotoPerfilApp: usuario.fotoPerfilApp || null,
+            origenCreacion: usuario.origenCreacion
+              ? (String(usuario.origenCreacion).toUpperCase() as "WEB" | "APP")
+              : null,
           })
         );
         setClientes(clientesFormateados);
@@ -330,6 +337,7 @@ export default function Home() {
     const today = getTodayDate();
     setStartDate(today);
     setEndDate(today);
+    setOriginFilter("APP");
     setCurrentPage(1);
 
     // Si estamos en "usuarios", forzar la recarga inmediata.
@@ -443,8 +451,11 @@ export default function Home() {
   // Datos visibles según paginación
   const getFilteredData = () => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return clientes;
-    return clientes.filter((c) => {
+    const byOrigin = clientes.filter((c) =>
+      originFilter === "ALL" ? true : c.origenCreacion === originFilter
+    );
+    if (!q) return byOrigin;
+    return byOrigin.filter((c) => {
       const telefono = (c.telefonoApp || "").toLowerCase();
       const nombrePref = (c.nombrePreferido || "").toLowerCase();
       const correo = (c.correoApp || "").toLowerCase();
@@ -719,7 +730,7 @@ export default function Home() {
         {/* Filtros y Búsqueda */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
           <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
-            <div className="flex-1">
+            <div className="w-56">
               <label
                 htmlFor="startDate"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
@@ -731,10 +742,10 @@ export default function Home() {
                 id="startDate"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                className="w-full h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
               />
             </div>
-            <div className="flex-1">
+            <div className="w-56">
               <label
                 htmlFor="endDate"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
@@ -746,10 +757,10 @@ export default function Home() {
                 id="endDate"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                className="w-full h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
               />
             </div>
-            <div className="flex-1 w-full">
+            <div className="w-full lg:w-64">
               <label
                 htmlFor="searchQuery"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
@@ -763,24 +774,39 @@ export default function Home() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Ej: 9876, maria, @gmail.com, juan perez, 0501..., sin documento"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                className="w-full h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
               />
             </div>
             <div className="flex gap-2">
               <button
                 onClick={clearFilters}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
                 title="Restablecer a hoy y actualizar datos"
               >
                 🔄 Hoy
               </button>
+              {/* Filtro de Origen */}
+              <div>
+                <select
+                  id="originFilter"
+                  value={originFilter}
+                  onChange={(e) =>
+                    setOriginFilter(e.target.value as "ALL" | "WEB" | "APP")
+                  }
+                  className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                >
+                  <option value="ALL">Todos</option>
+                  <option value="WEB">WEB</option>
+                  <option value="APP">APP</option>
+                </select>
+              </div>
               <button
                 onClick={() =>
                   setActiveView((v) =>
                     v === "usuarios" ? "reintentos" : "usuarios"
                   )
                 }
-                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors"
+                className="h-9 px-3 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors"
                 title="Cambiar a reporte de reintentos"
               >
                 {activeView === "reintentos"
@@ -788,7 +814,7 @@ export default function Home() {
                   : "Reporte Reintentos"}
               </button>
               <div className="flex gap-2 flex-wrap">
-                <div className="px-4 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
+                <div className="h-9 px-2 text-xs flex items-center bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
                   {isLoading
                     ? "Cargando..."
                     : `${filteredCount} resultado${
@@ -796,7 +822,7 @@ export default function Home() {
                       }`}
                 </div>
                 {!isLoading && clientes.length > 0 && (
-                  <div className="px-3 py-2 text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-md border border-red-200 dark:border-red-800">
+                  <div className="h-9 px-2 text-xs flex items-center bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-md border border-red-200 dark:border-red-800">
                     Sin Contacto:{" "}
                     {
                       getVisibleData().filter(
@@ -806,7 +832,7 @@ export default function Home() {
                   </div>
                 )}
                 {sortColumn && (
-                  <div className="px-3 py-2 text-sm bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-md border border-green-200 dark:border-green-800">
+                  <div className="h-9 px-2 text-xs flex items-center bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-md border border-green-200 dark:border-green-800">
                     Ordenado:{" "}
                     {sortColumn
                       .replace(/([A-Z])/g, " $1")

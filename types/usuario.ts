@@ -16,6 +16,7 @@ export interface UsuarioDigitalUI {
   telefonoApp?: string | null;
   telefonoValidado?: boolean | null;
   fotoPerfilApp?: string | null;
+  origenCreacion?: "WEB" | "APP" | null;
   [key: string]: string | boolean | null | undefined; // Index signature para ordenamiento
 }
 
@@ -35,6 +36,7 @@ export interface UsuarioDigitalFromAPI {
   telefonoApp?: string;
   telefonoValidado?: boolean;
   fotoPerfilApp?: string;
+  origenCreacion?: "WEB" | "APP" | string | null;
 }
 
 export interface APIResponse<T> {
