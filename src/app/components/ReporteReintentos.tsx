@@ -719,12 +719,15 @@ export default function ReporteReintentos({
                     ? String(r.id_usuario_digital)
                     : "";
                 const isFrequent = idKey && (countsByUserId[idKey] || 0) > 3;
+                const isUnique = idKey && (countsByUserId[idKey] || 0) === 1;
                 return (
                   <tr
                     key={idx}
                     className={`${
                       isFrequent
                         ? "bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500"
+                        : isUnique
+                        ? "bg-sky-50 dark:bg-sky-900/20 border-l-4 border-sky-400"
                         : ""
                     } hover:bg-gray-50 dark:hover:bg-gray-700`}
                   >
