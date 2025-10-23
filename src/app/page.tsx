@@ -461,11 +461,13 @@ export default function Home() {
       const correo = (c.correoApp || "").toLowerCase();
       const nombreContacto = (c.nombreCompletoContacto || "").toLowerCase();
       const identificacion = (c.identificacion || "").toLowerCase();
+      const idUsuario = (c.idUsuarioDigital || "").toLowerCase();
       const motivoDirecto = (c.motivoNoAfiliacion || "").toLowerCase();
       const motivoMapa = (
         motivosNoAfiliacion[c.idUsuarioDigital || ""] || ""
       ).toLowerCase();
       return (
+        idUsuario.includes(q) ||
         telefono.includes(q) ||
         nombrePref.includes(q) ||
         correo.includes(q) ||
@@ -765,15 +767,15 @@ export default function Home() {
                 htmlFor="searchQuery"
                 className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
               >
-                Buscar (teléfono, preferido, correo, contacto, identificación,
-                motivo)
+                Buscar (ID usuario, teléfono, preferido, correo, contacto,
+                identificación, motivo)
               </label>
               <input
                 type="text"
                 id="searchQuery"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ej: 9876, maria, @gmail.com, juan perez, 0501..., sin documento"
+                placeholder="Ej: UD123, 9876, maria, @gmail.com, juan perez, 0501..., sin documento"
                 className="w-full h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
               />
             </div>
