@@ -479,7 +479,7 @@ export default function Home() {
       setGlobalIsLoading(true);
       setGlobalError(null);
       const url = new URL(
-        "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+        "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
       );
       url.searchParams.set("page", String(globalPage));
       url.searchParams.set("limit", String(globalLimit));
@@ -536,7 +536,7 @@ export default function Home() {
 
       do {
         const url = new URL(
-          "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+          "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
         );
         url.searchParams.set("page", String(page));
         url.searchParams.set("limit", String(limit));
@@ -685,7 +685,7 @@ export default function Home() {
 
       do {
         const url = new URL(
-          "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+          "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
         );
         url.searchParams.set("page", String(page));
         url.searchParams.set("limit", String(limit));
