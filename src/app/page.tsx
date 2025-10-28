@@ -528,26 +528,20 @@ export default function Home() {
       setIntentosIsLoading(true);
       setIntentosError(null);
 
-      // Traer todas las páginas del endpoint para tener el universo del periodo
-      let page = 1;
-      const limit = 250; // tamaño razonable para paginar
+      // Un solo request amplio (page=1&limit=2000)
       const all: ReporteGlobalItem[] = [];
-      let totalPagesLocal = 1;
-
-      do {
+      {
         const url = new URL(
           "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
         );
-        url.searchParams.set("page", String(page));
-        url.searchParams.set("limit", String(limit));
+        url.searchParams.set("page", "1");
+        url.searchParams.set("limit", "100000");
         const resp = await fetch(url.toString(), { cache: "no-store" });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const json = await resp.json();
         const items = Array.isArray(json?.data?.items) ? json.data.items : [];
-        totalPagesLocal = Number(json?.data?.pagination?.totalPages || 1);
         for (const it of items) all.push(it as ReporteGlobalItem);
-        page += 1;
-      } while (page <= totalPagesLocal);
+      }
 
       // Agrupar por fecha_creacion_date y contar intentos
       const filteredAll: ReporteGlobalItem[] = [];
@@ -678,25 +672,19 @@ export default function Home() {
       setPromedioIsLoading(true);
       setPromedioError(null);
 
-      let page = 1;
-      const limit = 250;
       const all: ReporteGlobalItem[] = [];
-      let totalPagesLocal = 1;
-
-      do {
+      {
         const url = new URL(
           "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
         );
-        url.searchParams.set("page", String(page));
-        url.searchParams.set("limit", String(limit));
+        url.searchParams.set("page", "1");
+        url.searchParams.set("limit", "100000");
         const resp = await fetch(url.toString(), { cache: "no-store" });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const json = await resp.json();
         const items = Array.isArray(json?.data?.items) ? json.data.items : [];
-        totalPagesLocal = Number(json?.data?.pagination?.totalPages || 1);
         for (const it of items) all.push(it as ReporteGlobalItem);
-        page += 1;
-      } while (page <= totalPagesLocal);
+      }
 
       type Bucket = 1 | 2 | 3 | 4 | 6;
       type Stats = { sum: number; count: number };
