@@ -59,13 +59,127 @@ export default function Home() {
 
   // Búsqueda
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeView, setActiveView] = useState<"usuarios" | "reintentos">(
-    "usuarios"
-  );
+  const [activeView, setActiveView] = useState<
+    "usuarios" | "reintentos" | "global"
+  >("usuarios");
   // Filtro por origen de creación (no visible en tabla)
   const [originFilter, setOriginFilter] = useState<"ALL" | "WEB" | "APP">(
     "APP"
   );
+
+  // Estado para Reporte Global
+  type ReporteGlobalItem = {
+    tiempo_enrolamiento_completo_en_minutos?: number | null;
+    usuariodigital_fh_registro?: string | null;
+    contacto_fh_registro?: string | null;
+    clientelealtad_fh_registro?: string | null;
+    conteo_intentos?: number | null;
+    fecha_creacion_date?: string | null;
+    fecha_hora_ultimo_log?: string | null;
+    edad?: number | null;
+    rango_edad_cliente?: string | null;
+    proveedor?: string | null;
+    id_usuario_digital?: number | null;
+    id_contacto?: number | null;
+    nombre_preferido?: string | null;
+    telefono?: string | null;
+    email?: string | null;
+    nombre_completo?: string | null;
+    id_cliente_lealtad?: number | null;
+    id_pais?: number | null;
+    identificacion?: string | null;
+    identificacion_tipo_dato?: string | null;
+    identificacion_validada?: boolean | null;
+    identificacion_escaneada?: boolean | null;
+    genero?: string | null;
+    fecha_nacimiento?: string | null;
+    ultimo_log?: string | null;
+    sucursal_venta?: string | null;
+    conteo_conflictos?: number | null;
+    origen_creacion?: string | null;
+    // campos adicionales posibles ignorados
+    [key: string]: unknown;
+  };
+  type Pagination = {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    nextPage?: number;
+    previousPage?: number;
+  };
+  const [globalItems, setGlobalItems] = useState<ReporteGlobalItem[]>([]);
+  const [globalPagination, setGlobalPagination] = useState<Pagination | null>(
+    null
+  );
+  const [globalIsLoading, setGlobalIsLoading] = useState<boolean>(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+  const [globalPage, setGlobalPage] = useState<number>(1);
+  const [globalLimit, setGlobalLimit] = useState<number>(5);
+  const [globalKeys, setGlobalKeys] = useState<string[]>([]);
+
+  // Vista INTENTOS (agregados por día)
+  const [showGlobalIntentos, setShowGlobalIntentos] = useState<boolean>(false);
+  const [intentosIsLoading, setIntentosIsLoading] = useState<boolean>(false);
+  const [intentosError, setIntentosError] = useState<string | null>(null);
+  type IntentosRow = {
+    fecha: string;
+    c1: number;
+    p1: number;
+    c2: number;
+    p2: number;
+    c3: number;
+    p3: number;
+    c4: number;
+    p4: number;
+    c6: number;
+    p6: number;
+    cNull: number;
+    pNull: number;
+    total: number;
+    pTotal: number;
+  };
+  const [intentosRows, setIntentosRows] = useState<IntentosRow[]>([]);
+  const [intentosTotals, setIntentosTotals] = useState<{
+    total: number;
+    c1: number;
+    c2: number;
+    c3: number;
+    c4: number;
+    c6: number;
+    cNull: number;
+  } | null>(null);
+  const [intentosAll, setIntentosAll] = useState<ReporteGlobalItem[]>([]);
+  const [intentosDetail, setIntentosDetail] = useState<
+    ReporteGlobalItem[] | null
+  >(null);
+  const [intentosDetailTitle, setIntentosDetailTitle] = useState<string>("");
+  const [intentosDetailKeys, setIntentosDetailKeys] = useState<string[]>([]);
+  const [showGlobalPromedio, setShowGlobalPromedio] = useState<boolean>(false);
+  const [promedioIsLoading, setPromedioIsLoading] = useState<boolean>(false);
+  const [promedioError, setPromedioError] = useState<string | null>(null);
+  type PromedioRow = {
+    fecha: string;
+    a1: number | null;
+    a2: number | null;
+    a3: number | null;
+    a4: number | null;
+    a6: number | null;
+    aNull: null; // explícitamente null
+    total: number | null;
+  };
+  const [promedioRows, setPromedioRows] = useState<PromedioRow[]>([]);
+  const [promedioTotals, setPromedioTotals] = useState<{
+    a1: number | null;
+    a2: number | null;
+    a3: number | null;
+    a4: number | null;
+    a6: number | null;
+    aNull: null;
+    total: number | null;
+  } | null>(null);
 
   // Columnas reordenables (drag & drop)
   type ColumnId =
@@ -195,6 +309,49 @@ export default function Home() {
     }
   }, []);
 
+  // Abrir detalle filtrado por fecha y bucket de intentos
+  const openIntentosDetail = useCallback(
+    (fecha: string, bucket: 1 | 2 | 3 | 4 | 6 | "null") => {
+      try {
+        const subset = intentosAll.filter((it) => {
+          const rec = it as Record<string, unknown>;
+          const f = String(
+            (rec["fecha_creacion_date"] as string | undefined) ||
+              (rec["fecha_creacion"] as string | undefined) ||
+              ""
+          );
+          if (f !== fecha) return false;
+          const vRaw = rec["conteo_intentos"] as unknown;
+          const vNum =
+            vRaw === null || vRaw === undefined
+              ? null
+              : typeof vRaw === "number"
+              ? vRaw
+              : Number(vRaw as string);
+
+          if (bucket === "null") return vNum === null || Number.isNaN(vNum);
+          return vNum === bucket;
+        });
+        setIntentosDetail(subset);
+        setIntentosDetailTitle(
+          `Detalle ${
+            bucket === "null" ? "null" : bucket
+          } intento(s) — ${fecha} (${subset.length})`
+        );
+        const keys =
+          subset.length > 0
+            ? Object.keys(subset[0] as Record<string, unknown>)
+            : [];
+        setIntentosDetailKeys(keys);
+      } catch (e) {
+        setIntentosDetail([]);
+        setIntentosDetailTitle("Detalle");
+        setIntentosDetailKeys([]);
+      }
+    },
+    [intentosAll]
+  );
+
   // Función para obtener datos de la API
   const fetchClientes = useCallback(async () => {
     try {
@@ -316,6 +473,356 @@ export default function Home() {
     fetchMotivos();
   }, [fetchMotivos]);
 
+  // Fetch Reporte Global
+  const fetchReporteGlobal = useCallback(async () => {
+    try {
+      setGlobalIsLoading(true);
+      setGlobalError(null);
+      const url = new URL(
+        "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+      );
+      url.searchParams.set("page", String(globalPage));
+      url.searchParams.set("limit", String(globalLimit));
+      const resp = await fetch(url.toString(), { cache: "no-store" });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const json = await resp.json();
+      const ok = Boolean(json?.success);
+      if (!ok) throw new Error(String(json?.message || json?.error || "Error"));
+      const items = Array.isArray(json?.data?.items) ? json.data.items : [];
+      const pagination = json?.data?.pagination || null;
+      setGlobalItems(items as ReporteGlobalItem[]);
+      setGlobalPagination(pagination as Pagination);
+      if (items && items.length > 0) {
+        try {
+          const keys = Object.keys(items[0] as Record<string, unknown>);
+          setGlobalKeys(keys);
+        } catch {
+          setGlobalKeys([]);
+        }
+      } else {
+        setGlobalKeys([]);
+      }
+    } catch (err) {
+      console.error("Error reporte global:", err);
+      setGlobalItems([]);
+      setGlobalPagination(null);
+      setGlobalError("No se pudo cargar el reporte global");
+    } finally {
+      setGlobalIsLoading(false);
+    }
+  }, [globalPage, globalLimit]);
+
+  // Cargar cuando se entra a la vista global o cambia paginación
+  useEffect(() => {
+    if (activeView === "global") {
+      fetchReporteGlobal();
+    }
+  }, [activeView, fetchReporteGlobal]);
+
+  // Cargar todas las páginas y calcular métricas de INTENTOS
+  const loadIntentosMetrics = useCallback(async () => {
+    try {
+      setShowGlobalIntentos(true);
+      setIntentosIsLoading(true);
+      setIntentosError(null);
+
+      // Traer todas las páginas del endpoint para tener el universo del periodo
+      let page = 1;
+      const limit = 250; // tamaño razonable para paginar
+      const all: ReporteGlobalItem[] = [];
+      let totalPagesLocal = 1;
+
+      do {
+        const url = new URL(
+          "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+        );
+        url.searchParams.set("page", String(page));
+        url.searchParams.set("limit", String(limit));
+        const resp = await fetch(url.toString(), { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        const items = Array.isArray(json?.data?.items) ? json.data.items : [];
+        totalPagesLocal = Number(json?.data?.pagination?.totalPages || 1);
+        for (const it of items) all.push(it as ReporteGlobalItem);
+        page += 1;
+      } while (page <= totalPagesLocal);
+
+      // Agrupar por fecha_creacion_date y contar intentos
+      const filteredAll: ReporteGlobalItem[] = [];
+      const byDate: Record<
+        string,
+        {
+          total: number;
+          c1: number;
+          c2: number;
+          c3: number;
+          c4: number;
+          c6: number;
+          cNull: number;
+        }
+      > = {};
+
+      for (const it of all) {
+        const rec = it as Record<string, unknown>;
+        const originRaw = rec["origen_creacion"] as unknown;
+        const originUpper =
+          originRaw == null ? "" : String(originRaw).toUpperCase();
+        if (originUpper !== "APP") {
+          continue; // Filtrar métricas solo para origen APP
+        }
+        filteredAll.push(it as ReporteGlobalItem);
+        const fecha = String(
+          (rec["fecha_creacion_date"] as string | undefined) ||
+            (rec["fecha_creacion"] as string | undefined) ||
+            ""
+        );
+        if (!fecha) continue;
+        if (!byDate[fecha]) {
+          byDate[fecha] = {
+            total: 0,
+            c1: 0,
+            c2: 0,
+            c3: 0,
+            c4: 0,
+            c6: 0,
+            cNull: 0,
+          };
+        }
+        byDate[fecha].total += 1;
+        const vRaw = rec["conteo_intentos"] as unknown;
+        const vNum =
+          vRaw === null || vRaw === undefined
+            ? null
+            : typeof vRaw === "number"
+            ? vRaw
+            : Number(vRaw as string);
+        if (vNum === null || Number.isNaN(vNum)) {
+          byDate[fecha].cNull += 1;
+        } else if (vNum === 1) {
+          byDate[fecha].c1 += 1;
+        } else if (vNum === 2) {
+          byDate[fecha].c2 += 1;
+        } else if (vNum === 3) {
+          byDate[fecha].c3 += 1;
+        } else if (vNum === 4) {
+          byDate[fecha].c4 += 1;
+        } else if (vNum === 6) {
+          byDate[fecha].c6 += 1;
+        } else {
+          // Otros valores de intentos no solicitados: se contabilizan en total, no en columnas
+        }
+      }
+
+      const rows: IntentosRow[] = Object.keys(byDate)
+        .sort()
+        .map((fecha) => {
+          const d = byDate[fecha];
+          const total = Math.max(1, d.total);
+          const pct = (n: number) => (n / total) * 100;
+          return {
+            fecha,
+            c1: d.c1,
+            p1: pct(d.c1),
+            c2: d.c2,
+            p2: pct(d.c2),
+            c3: d.c3,
+            p3: pct(d.c3),
+            c4: d.c4,
+            p4: pct(d.c4),
+            c6: d.c6,
+            p6: pct(d.c6),
+            cNull: d.cNull,
+            pNull: pct(d.cNull),
+            total: d.total,
+            pTotal: 100,
+          };
+        });
+
+      const totals = rows.reduce(
+        (acc, r) => {
+          acc.total += r.total;
+          acc.c1 += r.c1;
+          acc.c2 += r.c2;
+          acc.c3 += r.c3;
+          acc.c4 += r.c4;
+          acc.c6 += r.c6;
+          acc.cNull += r.cNull;
+          return acc;
+        },
+        { total: 0, c1: 0, c2: 0, c3: 0, c4: 0, c6: 0, cNull: 0 }
+      );
+
+      setIntentosRows(rows);
+      setIntentosTotals(totals);
+      setIntentosAll(filteredAll);
+      setIntentosDetail(null);
+      setIntentosDetailTitle("");
+      setIntentosDetailKeys([]);
+    } catch (err) {
+      console.error("Error métricas de intentos:", err);
+      setIntentosRows([]);
+      setIntentosTotals(null);
+      setIntentosError("No se pudieron calcular las métricas de intentos");
+    } finally {
+      setIntentosIsLoading(false);
+    }
+  }, []);
+
+  // Cargar promedio de minutos por intento (APP)
+  const loadPromedioMinutos = useCallback(async () => {
+    try {
+      setShowGlobalPromedio(true);
+      setShowGlobalIntentos(false);
+      setPromedioIsLoading(true);
+      setPromedioError(null);
+
+      let page = 1;
+      const limit = 250;
+      const all: ReporteGlobalItem[] = [];
+      let totalPagesLocal = 1;
+
+      do {
+        const url = new URL(
+          "http://localhost:4040/v1/afiliamiento/reporte-global-afiliaciones"
+        );
+        url.searchParams.set("page", String(page));
+        url.searchParams.set("limit", String(limit));
+        const resp = await fetch(url.toString(), { cache: "no-store" });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+        const items = Array.isArray(json?.data?.items) ? json.data.items : [];
+        totalPagesLocal = Number(json?.data?.pagination?.totalPages || 1);
+        for (const it of items) all.push(it as ReporteGlobalItem);
+        page += 1;
+      } while (page <= totalPagesLocal);
+
+      type Bucket = 1 | 2 | 3 | 4 | 6;
+      type Stats = { sum: number; count: number };
+      const makeStats = (): Stats => ({ sum: 0, count: 0 });
+
+      const byDate: Record<
+        string,
+        {
+          b1: Stats;
+          b2: Stats;
+          b3: Stats;
+          b4: Stats;
+          b6: Stats; // null no acumula
+          total: Stats;
+        }
+      > = {};
+
+      const totals: { [K in Bucket]: Stats } & { total: Stats } = {
+        1: makeStats(),
+        2: makeStats(),
+        3: makeStats(),
+        4: makeStats(),
+        6: makeStats(),
+        total: makeStats(),
+      } as { [K in Bucket]: Stats } & { total: Stats };
+
+      for (const it of all) {
+        const rec = it as Record<string, unknown>;
+        const originUpper = String(rec["origen_creacion"] ?? "").toUpperCase();
+        if (originUpper !== "APP") continue;
+
+        const fecha = String(
+          (rec["fecha_creacion_date"] as string | undefined) ||
+            (rec["fecha_creacion"] as string | undefined) ||
+            ""
+        );
+        if (!fecha) continue;
+
+        const minutesRaw = rec[
+          "tiempo_enrolamiento_completo_en_minutos"
+        ] as unknown;
+        const minutes =
+          typeof minutesRaw === "number"
+            ? minutesRaw
+            : Number(minutesRaw as string);
+        if (Number.isNaN(minutes)) continue;
+
+        if (!byDate[fecha]) {
+          byDate[fecha] = {
+            b1: makeStats(),
+            b2: makeStats(),
+            b3: makeStats(),
+            b4: makeStats(),
+            b6: makeStats(),
+            total: makeStats(),
+          };
+        }
+
+        byDate[fecha].total.sum += minutes;
+        byDate[fecha].total.count += 1;
+        totals.total.sum += minutes;
+        totals.total.count += 1;
+
+        const vRaw = rec["conteo_intentos"] as unknown;
+        const vNum =
+          vRaw === null || vRaw === undefined
+            ? null
+            : typeof vRaw === "number"
+            ? vRaw
+            : Number(vRaw as string);
+        if (
+          vNum === 1 ||
+          vNum === 2 ||
+          vNum === 3 ||
+          vNum === 4 ||
+          vNum === 6
+        ) {
+          const key = ("b" + vNum) as keyof (typeof byDate)[typeof fecha];
+          (byDate[fecha][key] as Stats).sum += minutes;
+          (byDate[fecha][key] as Stats).count += 1;
+          (totals[vNum as Bucket] as Stats).sum += minutes;
+          (totals[vNum as Bucket] as Stats).count += 1;
+        }
+        // si es null u otro valor, no se promedia por bucket
+      }
+
+      const rows: PromedioRow[] = Object.keys(byDate)
+        .sort()
+        .map((fecha) => {
+          const d = byDate[fecha];
+          const avg = (s: Stats): number | null =>
+            s.count > 0 ? s.sum / s.count : null;
+          return {
+            fecha,
+            a1: avg(d.b1),
+            a2: avg(d.b2),
+            a3: avg(d.b3),
+            a4: avg(d.b4),
+            a6: avg(d.b6),
+            aNull: null,
+            total: avg(d.total),
+          };
+        });
+
+      const avgTotals = (s: Stats): number | null =>
+        s.count > 0 ? s.sum / s.count : null;
+      setPromedioTotals({
+        a1: avgTotals(totals[1]),
+        a2: avgTotals(totals[2]),
+        a3: avgTotals(totals[3]),
+        a4: avgTotals(totals[4]),
+        a6: avgTotals(totals[6]),
+        aNull: null,
+        total: avgTotals(totals.total),
+      });
+      setPromedioRows(rows);
+    } catch (err) {
+      console.error("Error promedio minutos por intento:", err);
+      setPromedioRows([]);
+      setPromedioTotals(null);
+      setPromedioError("No se pudo calcular el promedio de minutos");
+    } finally {
+      setPromedioIsLoading(false);
+    }
+  }, []);
+
   // Efecto para manejar la tecla Escape para cerrar el modal
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -349,7 +856,7 @@ export default function Home() {
       setTimeout(() => {
         fetchClientes();
       }, 100);
-    } else {
+    } else if (activeView === "reintentos") {
       // Forzar explícitamente el refetch de reintentos incluso si ya era hoy
       setReintentosRefreshKey((k) => k + 1);
     }
@@ -815,7 +1322,14 @@ export default function Home() {
                   ? "Ver Usuarios"
                   : "Reporte Reintentos"}
               </button>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
+                <button
+                  onClick={() => setActiveView("global")}
+                  className="h-9 px-3 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  title="Ver Reporte Global"
+                >
+                  Reporte Global
+                </button>
                 <div className="h-9 px-2 text-xs flex items-center bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
                   {isLoading
                     ? "Cargando..."
@@ -862,6 +1376,705 @@ export default function Home() {
               endDate={endDate}
               refreshKey={reintentosRefreshKey}
             />
+          </div>
+        ) : activeView === "global" ? (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 flex items-end gap-3 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                  Página
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={globalPage}
+                  onChange={(e) =>
+                    setGlobalPage(Math.max(1, Number(e.target.value) || 1))
+                  }
+                  className="w-24 h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                  Límite
+                </label>
+                <select
+                  value={globalLimit}
+                  onChange={(e) => setGlobalLimit(Number(e.target.value))}
+                  className="w-28 h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={loadIntentosMetrics}
+                className="h-9 px-3 text-sm font-medium text-white bg-amber-600 border border-transparent rounded-md hover:bg-amber-700 focus:ring-2 focus:ring-amber-500 transition-colors"
+                title="Ver intentos"
+              >
+                INTENTOS
+              </button>
+              <button
+                type="button"
+                onClick={loadPromedioMinutos}
+                className="h-9 px-3 text-sm font-medium text-white bg-teal-600 border border-transparent rounded-md hover:bg-teal-700 focus:ring-2 focus:ring-teal-500 transition-colors"
+                title="Promedio minutos por intento"
+              >
+                PROMEDIO MINUTOS x INTENTO
+              </button>
+              <div className="ml-auto text-xs px-3 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                {globalIsLoading
+                  ? "Cargando reporte..."
+                  : `${globalItems.length} registros (página ${
+                      globalPagination?.page ?? globalPage
+                    } de ${globalPagination?.totalPages ?? "?"})`}
+              </div>
+            </div>
+            {globalError && (
+              <div className="p-4 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+                {globalError}
+              </div>
+            )}
+            {showGlobalIntentos ? (
+              <div className="overflow-x-auto">
+                {intentosError && (
+                  <div className="p-4 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+                    {intentosError}
+                  </div>
+                )}
+                <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-200">
+                        fecha_creacion_date
+                      </th>
+                      {([1, 2, 3, 4, 6] as const).map((n) => (
+                        <>
+                          <th
+                            key={`h${n}`}
+                            className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300"
+                          >
+                            {n}
+                          </th>
+                          <th
+                            key={`p${n}`}
+                            className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300"
+                          >
+                            %
+                          </th>
+                        </>
+                      ))}
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        null
+                      </th>
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        %
+                      </th>
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        Suma total
+                      </th>
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        %
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {intentosIsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={16}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <span className="ml-3">Calculando métricas...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : intentosRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={16}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          Sin datos para mostrar
+                        </td>
+                      </tr>
+                    ) : (
+                      intentosRows.map((r, idx) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
+                          <td className="px-3 py-2 text-xs font-mono">
+                            {r.fecha}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.c1 > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openIntentosDetail(r.fecha, 1)}
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.c1} registros (1 intento)`}
+                              >
+                                {r.c1}
+                              </button>
+                            ) : (
+                              r.c1
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.p1.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.c2 > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openIntentosDetail(r.fecha, 2)}
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.c2} registros (2 intentos)`}
+                              >
+                                {r.c2}
+                              </button>
+                            ) : (
+                              r.c2
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.p2.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.c3 > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openIntentosDetail(r.fecha, 3)}
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.c3} registros (3 intentos)`}
+                              >
+                                {r.c3}
+                              </button>
+                            ) : (
+                              r.c3
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.p3.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.c4 > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openIntentosDetail(r.fecha, 4)}
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.c4} registros (4 intentos)`}
+                              >
+                                {r.c4}
+                              </button>
+                            ) : (
+                              r.c4
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.p4.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.c6 > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openIntentosDetail(r.fecha, 6)}
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.c6} registros (6 intentos)`}
+                              >
+                                {r.c6}
+                              </button>
+                            ) : (
+                              r.c6
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.p6.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.cNull > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openIntentosDetail(r.fecha, "null")
+                                }
+                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                title={`Ver detalle de ${r.cNull} registros (intentos null)`}
+                              >
+                                {r.cNull}
+                              </button>
+                            ) : (
+                              r.cNull
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.pNull.toFixed(2)}%
+                          </td>
+                          <td className="px-2 py-2 text-xs font-semibold">
+                            {r.total}
+                          </td>
+                          <td className="px-2 py-2 text-xs font-semibold">
+                            {r.pTotal.toFixed(2)}%
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {intentosTotals && (
+                    <tfoot>
+                      <tr className="bg-gray-50 dark:bg-gray-700 font-semibold">
+                        <td className="px-3 py-2 text-xs">Suma total</td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.c1}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.c1 /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.c2}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.c2 /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.c3}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.c3 /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.c4}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.c4 /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.c6}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.c6 /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.cNull}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(
+                            (intentosTotals.cNull /
+                              Math.max(1, intentosTotals.total)) *
+                            100
+                          ).toFixed(2)}
+                          %
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {intentosTotals.total}
+                        </td>
+                        <td className="px-2 py-2 text-xs">100.00%</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+                {intentosDetail && (
+                  <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                        {intentosDetailTitle}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIntentosDetail(null);
+                          setIntentosDetailTitle("");
+                          setIntentosDetailKeys([]);
+                        }}
+                        className="px-3 py-1.5 text-xs rounded-md bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      >
+                        Cerrar detalle
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                          <tr>
+                            {intentosDetailKeys.length > 0 ? (
+                              intentosDetailKeys.map((k) => (
+                                <th
+                                  key={k}
+                                  className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                >
+                                  {k}
+                                </th>
+                              ))
+                            ) : (
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                (sin columnas)
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                          {intentosDetail.map((it, i) => (
+                            <tr
+                              key={i}
+                              className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                              {intentosDetailKeys.map((k) => (
+                                <td
+                                  key={k}
+                                  className="px-3 py-2 text-xs align-top"
+                                >
+                                  {(() => {
+                                    const val = (it as Record<string, unknown>)[
+                                      k
+                                    ];
+                                    if (val == null) return "-";
+                                    if (typeof val === "object") {
+                                      try {
+                                        const json = JSON.stringify(val);
+                                        return (
+                                          <span
+                                            title={json}
+                                            className="font-mono"
+                                          >
+                                            {json}
+                                          </span>
+                                        );
+                                      } catch {
+                                        return String(val);
+                                      }
+                                    }
+                                    if (typeof val === "string") {
+                                      const s = val as string;
+                                      const isHttp = /^https?:\/\//i.test(s);
+                                      const isS3 = /^s3:\/\//i.test(s);
+                                      if (isHttp) {
+                                        return (
+                                          <a
+                                            href={s}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            title={s}
+                                            className="text-blue-600 dark:text-blue-400 underline hover:no-underline inline-block max-w-[420px] truncate align-middle"
+                                          >
+                                            {s}
+                                          </a>
+                                        );
+                                      }
+                                      if (isS3) {
+                                        return (
+                                          <span
+                                            title={s}
+                                            className="text-blue-600 dark:text-blue-400 inline-block max-w-[420px] truncate align-middle"
+                                          >
+                                            {s}
+                                          </span>
+                                        );
+                                      }
+                                      return s;
+                                    }
+                                    return String(val);
+                                  })()}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : showGlobalPromedio ? (
+              <div className="overflow-x-auto">
+                {promedioError && (
+                  <div className="p-4 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800">
+                    {promedioError}
+                  </div>
+                )}
+                <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-200">
+                        fecha_creacion_date
+                      </th>
+                      {([1, 2, 3, 4, 6] as const).map((n) => (
+                        <th
+                          key={`avg${n}`}
+                          className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300"
+                        >
+                          {n}
+                        </th>
+                      ))}
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        null
+                      </th>
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                        Suma total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {promedioIsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <span className="ml-3">
+                              Calculando promedios...
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : promedioRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          Sin datos para mostrar
+                        </td>
+                      </tr>
+                    ) : (
+                      promedioRows.map((r, idx) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
+                          <td className="px-3 py-2 text-xs font-mono">
+                            {r.fecha}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.a1 != null ? r.a1.toFixed(2) : "-"}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.a2 != null ? r.a2.toFixed(2) : "-"}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.a3 != null ? r.a3.toFixed(2) : "-"}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.a4 != null ? r.a4.toFixed(2) : "-"}
+                          </td>
+                          <td className="px-2 py-2 text-xs">
+                            {r.a6 != null ? r.a6.toFixed(2) : "-"}
+                          </td>
+                          <td className="px-2 py-2 text-xs">-</td>
+                          <td className="px-2 py-2 text-xs font-semibold">
+                            {r.total != null ? r.total.toFixed(2) : "-"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {promedioTotals && (
+                    <tfoot>
+                      <tr className="bg-gray-50 dark:bg-gray-700 font-semibold">
+                        <td className="px-3 py-2 text-xs">Suma total</td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.a1 != null
+                            ? promedioTotals.a1.toFixed(2)
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.a2 != null
+                            ? promedioTotals.a2.toFixed(2)
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.a3 != null
+                            ? promedioTotals.a3.toFixed(2)
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.a4 != null
+                            ? promedioTotals.a4.toFixed(2)
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.a6 != null
+                            ? promedioTotals.a6.toFixed(2)
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-2 text-xs">-</td>
+                        <td className="px-2 py-2 text-xs">
+                          {promedioTotals.total != null
+                            ? promedioTotals.total.toFixed(2)
+                            : "-"}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      {globalKeys.length > 0 ? (
+                        globalKeys.map((k) => (
+                          <th
+                            key={k}
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                          >
+                            {k}
+                          </th>
+                        ))
+                      ) : (
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                          (sin columnas)
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {globalIsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(1, globalKeys.length)}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            <span className="ml-3">Cargando reporte...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : globalItems.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={Math.max(1, globalKeys.length)}
+                          className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                        >
+                          Sin datos para mostrar
+                        </td>
+                      </tr>
+                    ) : (
+                      globalItems.map((it, idx) => (
+                        <tr
+                          key={idx}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                        >
+                          {globalKeys.map((k) => (
+                            <td key={k} className="px-3 py-3 text-xs align-top">
+                              {(() => {
+                                const val = (it as Record<string, unknown>)[k];
+                                if (val == null) return "-";
+                                if (typeof val === "object") {
+                                  try {
+                                    const json = JSON.stringify(val);
+                                    return (
+                                      <span title={json} className="font-mono">
+                                        {json}
+                                      </span>
+                                    );
+                                  } catch {
+                                    return String(val);
+                                  }
+                                }
+                                if (typeof val === "string") {
+                                  const s = val as string;
+                                  const isHttp = /^https?:\/\//i.test(s);
+                                  const isS3 = /^s3:\/\//i.test(s);
+                                  if (isHttp) {
+                                    return (
+                                      <a
+                                        href={s}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title={s}
+                                        className="text-blue-600 dark:text-blue-400 underline hover:no-underline inline-block max-w-[420px] truncate align-middle"
+                                      >
+                                        {s}
+                                      </a>
+                                    );
+                                  }
+                                  if (isS3) {
+                                    return (
+                                      <span
+                                        title={s}
+                                        className="text-blue-600 dark:text-blue-400 inline-block max-w-[420px] truncate align-middle"
+                                      >
+                                        {s}
+                                      </span>
+                                    );
+                                  }
+                                  return s;
+                                }
+                                return String(val);
+                              })()}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                {globalPagination
+                  ? `Total ${globalPagination.total} • Página ${globalPagination.page} de ${globalPagination.totalPages}`
+                  : ""}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setGlobalPage((p) => Math.max(1, p - 1))}
+                  disabled={!globalPagination?.hasPreviousPage}
+                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                    !globalPagination?.hasPreviousPage
+                      ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                      : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  ◀ Anterior
+                </button>
+                <button
+                  onClick={() => setGlobalPage((p) => p + 1)}
+                  disabled={!globalPagination?.hasNextPage}
+                  className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                    !globalPagination?.hasNextPage
+                      ? "text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                      : "text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  Siguiente ▶
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <>
@@ -1174,7 +2387,7 @@ export default function Home() {
         )}
 
         {/* Footer con información adicional */}
-        {activeView !== "reintentos" && (
+        {activeView === "usuarios" && (
           <div className="mt-6 flex flex-col sm:flex-row justify-between items-center text-sm text-gray-600 dark:text-gray-400">
             <div>
               {isLoading ? (
