@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 type Reintento = {
   id: string | number | null;
   id_usuario_digital: string | number | null;
+  sucursal_venta?: string | null;
   id_tipo_evento: string | number | null;
   tipo_evento: string | null;
   ocr_identificacion: string | null;
@@ -40,6 +41,7 @@ export default function ReporteReintentos({
   const [motivoTargetLabel, setMotivoTargetLabel] = useState<string>("");
   const [errorTipoMap, setErrorTipoMap] = useState<Record<string, string>>({});
   const [filtroTipoError, setFiltroTipoError] = useState<string>("");
+  const [filtroSucursal, setFiltroSucursal] = useState<string>("");
   // Lazy loading de filas
   const INITIAL_PAGE_SIZE = 100;
   const PAGE_INCREMENT = 100;
@@ -125,6 +127,7 @@ export default function ReporteReintentos({
         return {
           id: r?.id ?? null,
           id_usuario_digital: r?.id_usuario_digital ?? null,
+          sucursal_venta: r?.sucursal_venta ?? null,
           id_tipo_evento: r?.id_tipo_evento ?? null,
           tipo_evento: r?.tipo_evento ?? null,
           ocr_identificacion: r?.ocr_identificacion ?? null,
@@ -345,6 +348,15 @@ export default function ReporteReintentos({
     return map;
   }, [rows]);
 
+  const sucursales = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) {
+      const s = (r.sucursal_venta || "").toString().trim();
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort();
+  }, [rows]);
+
   const visibleRows = useMemo(() => {
     let base = rows;
 
@@ -363,6 +375,12 @@ export default function ReporteReintentos({
       });
     }
 
+    if (filtroSucursal) {
+      base = base.filter(
+        (r) => (r.sucursal_venta || "").toString() === filtroSucursal
+      );
+    }
+
     if (soloFrecuentes) {
       base = base.filter((r) => {
         const key =
@@ -373,7 +391,14 @@ export default function ReporteReintentos({
     }
 
     return base;
-  }, [rows, filtroTipoError, soloFrecuentes, countsByUserId, errorTipoMap]);
+  }, [
+    rows,
+    filtroTipoError,
+    filtroSucursal,
+    soloFrecuentes,
+    countsByUserId,
+    errorTipoMap,
+  ]);
 
   // Reset de paginación/lazy cuando cambian los datos visibles
   useEffect(() => {
@@ -424,6 +449,7 @@ export default function ReporteReintentos({
       const headers = [
         "id",
         "id_usuario_digital",
+        "sucursal_venta",
         "motivo",
         "tipo_error",
         "tipo_evento",
@@ -458,6 +484,7 @@ export default function ReporteReintentos({
         const rowValues = [
           r.id == null ? "" : String(r.id),
           r.id_usuario_digital == null ? "" : String(r.id_usuario_digital),
+          r.sucursal_venta == null ? "" : String(r.sucursal_venta),
           motivo,
           key ? errorTipoMap[key] || "" : "",
           displayTipo,
@@ -623,6 +650,19 @@ export default function ReporteReintentos({
         </label>
         <div className="flex items-center gap-2">
           <select
+            value={filtroSucursal}
+            onChange={(e) => setFiltroSucursal(e.target.value)}
+            className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
+            title="Filtrar por sucursal"
+          >
+            <option value="">Todas las sucursales</option>
+            {sucursales.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select
             value={filtroTipoError}
             onChange={(e) => setFiltroTipoError(e.target.value)}
             className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
@@ -662,6 +702,9 @@ export default function ReporteReintentos({
                 id_usuario_digital
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                sucursal_venta
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                 Motivo
               </th>
               <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -694,7 +737,7 @@ export default function ReporteReintentos({
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={12}
                   className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
                 >
                   <div className="flex items-center justify-center">
@@ -706,7 +749,7 @@ export default function ReporteReintentos({
             ) : visibleRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={12}
                   className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
                 >
                   No hay datos de reintentos para el rango seleccionado
@@ -736,6 +779,9 @@ export default function ReporteReintentos({
                     </td>
                     <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
                       {r.id_usuario_digital ?? "-"}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
+                      {r.sucursal_venta ?? "-"}
                     </td>
                     <td
                       className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 cursor-pointer"

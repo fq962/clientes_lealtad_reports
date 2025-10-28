@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Proxy a la API local de afiliamiento
 export async function GET(request: NextRequest) {
+  const API_BASE = process.env.API_BASE_URL || "http://localhost:4040";
   try {
     const { searchParams } = new URL(request.url);
     const fechaInicio = searchParams.get("fechaInicio");
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (fechaInicio) params.append("fechaInicio", fechaInicio);
     if (fechaFin) params.append("fechaFin", fechaFin);
 
-    const url = `https://api.allasrepuestos.com/v1/afiliamiento/usuarios-digitales-reporte?${params.toString()}`;
+    const url = `${API_BASE}/v1/afiliamiento/usuarios-digitales-reporte?${params.toString()}`;
 
     const resp = await fetch(url, {
       method: "GET",

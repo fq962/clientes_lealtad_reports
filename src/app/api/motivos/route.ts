@@ -53,8 +53,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const API_BASE = process.env.API_BASE_URL || "http://localhost:4040";
     const resp = await fetch(
-      "https://api.allasrepuestos.com/v1/afiliamiento/insertar-motivo-no-afiliacion",
+      `${API_BASE}/v1/afiliamiento/insertar-motivo-no-afiliacion`,
       {
         method: "POST",
         headers: {

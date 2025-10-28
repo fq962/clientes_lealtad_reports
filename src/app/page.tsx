@@ -9,6 +9,8 @@ import type {
 import ReporteReintentos from "./components/ReporteReintentos";
 
 export default function Home() {
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4040";
   // Función para obtener la fecha de hoy en formato YYYY-MM-DD
   const getTodayDate = () => {
     return new Intl.DateTimeFormat("en-CA", {
@@ -479,7 +481,7 @@ export default function Home() {
       setGlobalIsLoading(true);
       setGlobalError(null);
       const url = new URL(
-        "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
+        `${API_BASE}/v1/afiliamiento/reporte-global-afiliaciones`
       );
       url.searchParams.set("page", String(globalPage));
       url.searchParams.set("limit", String(globalLimit));
@@ -532,7 +534,7 @@ export default function Home() {
       const all: ReporteGlobalItem[] = [];
       {
         const url = new URL(
-          "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
+          `${API_BASE}/v1/afiliamiento/reporte-global-afiliaciones`
         );
         url.searchParams.set("page", "1");
         url.searchParams.set("limit", "100000");
@@ -675,7 +677,7 @@ export default function Home() {
       const all: ReporteGlobalItem[] = [];
       {
         const url = new URL(
-          "https://api.allasrepuestos.com/v1/afiliamiento/reporte-global-afiliaciones"
+          `${API_BASE}/v1/afiliamiento/reporte-global-afiliaciones`
         );
         url.searchParams.set("page", "1");
         url.searchParams.set("limit", "100000");

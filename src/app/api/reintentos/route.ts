@@ -13,6 +13,7 @@ type ExternalItem = {
   fechaRegistro?: string | null;
   motivoReintento?: string | null;
   tipoMotivoReintento?: string | null;
+  sucursalVenta?: string | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -25,7 +26,8 @@ export async function GET(request: NextRequest) {
     if (fechaInicio) params.set("fechaInicio", fechaInicio);
     if (fechaFin) params.set("fechaFin", fechaFin);
 
-    const upstream = `https://api.allasrepuestos.com/v1/afiliamiento/log-reintentos-afiliacion-reporte?${params.toString()}`;
+    const API_BASE = process.env.API_BASE_URL || "http://localhost:4040";
+    const upstream = `${API_BASE}/v1/afiliamiento/log-reintentos-afiliacion-reporte?${params.toString()}`;
 
     const resp = await fetch(upstream, {
       method: "GET",
@@ -50,6 +52,7 @@ export async function GET(request: NextRequest) {
     const data = list.map((i) => ({
       id: i?.id ?? null,
       id_usuario_digital: i?.idUsuarioDigital ?? null,
+      sucursal_venta: (i?.sucursalVenta as string | null) ?? null,
       id_tipo_evento: i?.idTipoEvento ?? null,
       tipo_evento: (i?.tipoEvento as string | null) ?? null,
       ocr_identificacion: i?.ocrIdentificacion ?? null,
