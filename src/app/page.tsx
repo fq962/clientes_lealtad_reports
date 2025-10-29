@@ -9,8 +9,7 @@ import type {
 import ReporteReintentos from "./components/ReporteReintentos";
 
 export default function Home() {
-  const API_BASE =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4040";
+  const API_BASE = process.env.API_BASE_URL || "http://localhost:4040";
   // Función para obtener la fecha de hoy en formato YYYY-MM-DD
   const getTodayDate = () => {
     return new Intl.DateTimeFormat("en-CA", {
