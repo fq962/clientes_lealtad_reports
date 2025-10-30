@@ -190,6 +190,7 @@ export default function Home() {
     | "idContacto"
     | "correoApp"
     | "telefonoApp"
+    | "motivoNoAfiliacionAsesor"
     | "motivoNoAfiliacion"
     | "nombreCompletoContacto"
     | "identificacion"
@@ -240,9 +241,15 @@ export default function Home() {
       sortable: true,
     },
     {
+      id: "motivoNoAfiliacionAsesor",
+      header: "MOTIVO ASESOR",
+      widthClass: "w-[18%] min-w-[16rem]",
+      sortable: true,
+    },
+    {
       id: "motivoNoAfiliacion",
-      header: "Motivo No Afiliación",
-      widthClass: "w-48",
+      header: "MOTIVO IT",
+      widthClass: "w-[22%] min-w-[18rem]",
       sortable: true,
     },
     {
@@ -288,6 +295,10 @@ export default function Home() {
     null
   );
   const [motivoNoAfiliacion, setMotivoNoAfiliacion] = useState("");
+  // Estado/modal para Motivo Asesor
+  const [isModalAsesorOpen, setIsModalAsesorOpen] = useState(false);
+  const [motivoNoAfiliacionAsesorInput, setMotivoNoAfiliacionAsesorInput] =
+    useState("");
 
   // Estado para almacenar los motivos de no afiliación
   const [motivosNoAfiliacion, setMotivosNoAfiliacion] = useState<{
@@ -397,6 +408,7 @@ export default function Home() {
             idUsuarioDigital: String(usuario.idUsuarioDigital),
             nombrePreferido: usuario.nombrePreferido || null,
             motivoNoAfiliacion: usuario.motivoNoAfiliacion ?? null,
+            motivoNoAfiliacionAsesor: usuario.motivoNoAfiliacionAsesor ?? null,
             nombreCompletoContacto: usuario.nombreCompletoContacto || null,
             identificacion: usuario.identificacion || null,
             tipoIdentificacion: usuario.tipoIdentificacion || null,
@@ -1085,75 +1097,133 @@ export default function Home() {
     setMotivoNoAfiliacion("");
   };
 
+  // Abrir/cerrar modal de Motivo Asesor
+  const handleOpenAsesorModal = (user: UsuarioDigitalUI) => {
+    setSelectedUser(user);
+    setMotivoNoAfiliacionAsesorInput(user.motivoNoAfiliacionAsesor || "");
+    setIsModalAsesorOpen(true);
+  };
+
+  const handleCloseAsesorModal = () => {
+    setIsModalAsesorOpen(false);
+    setSelectedUser(null);
+    setMotivoNoAfiliacionAsesorInput("");
+  };
+
   const handleSaveMotivo = async () => {
-    if (motivoNoAfiliacion.trim()) {
-      const userId = selectedUser?.idUsuarioDigital;
-      if (userId) {
-        try {
-          // Intentar guardar en la base de datos
-          const response = await fetch("/api/motivos", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              idUsuarioDigital: userId,
-              motivo: motivoNoAfiliacion.trim(),
-            }),
-          });
+    const userId = selectedUser?.idUsuarioDigital;
+    if (!userId) return;
+    const motivoIt =
+      motivoNoAfiliacion.trim() === "" ? null : motivoNoAfiliacion.trim();
+    try {
+      const response = await fetch("/api/motivos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idUsuarioDigital: userId,
+          motivoNoAfiliacion: motivoIt,
+          motivoNoAfiliacionAsesor: null,
+        }),
+      });
 
-          const result = await response.json();
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Error al guardar");
 
-          if (result.success) {
-            // Actualizar el estado local también
-            setMotivosNoAfiliacion((prev) => ({
-              ...prev,
-              [userId]: motivoNoAfiliacion.trim(),
-            }));
+      setMotivosNoAfiliacion((prev) => ({
+        ...prev,
+        [userId]: motivoIt ?? "",
+      }));
 
-            // Reflejar de inmediato en la tabla
-            setClientes((prev) =>
-              prev.map((u) =>
-                u.idUsuarioDigital === userId
-                  ? { ...u, motivoNoAfiliacion: motivoNoAfiliacion.trim() }
-                  : u
-              )
-            );
+      setClientes((prev) =>
+        prev.map((u) =>
+          u.idUsuarioDigital === userId
+            ? { ...u, motivoNoAfiliacion: motivoIt }
+            : u
+        )
+      );
 
-            console.log("✅ Motivo guardado en BD para usuario:", userId);
-            alert(
-              `✅ Motivo guardado en BD para ${
-                selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
-              }`
-            );
+      alert(
+        `✅ Motivo IT ${motivoIt ? "guardado" : "limpiado"} para ${
+          selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
+        }`
+      );
+      handleCloseModal();
+    } catch (error) {
+      console.error("❌ Error guardando en BD, usando estado local:", error);
+      setMotivosNoAfiliacion((prev) => ({
+        ...prev,
+        [userId]: motivoIt ?? "",
+      }));
+      setClientes((prev) =>
+        prev.map((u) =>
+          u.idUsuarioDigital === userId
+            ? { ...u, motivoNoAfiliacion: motivoIt }
+            : u
+        )
+      );
+      alert(
+        `⚠️ Motivo IT ${
+          motivoIt ? "guardado localmente" : "limpiado localmente"
+        } para ${
+          selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
+        }\n(No se pudo guardar en BD)`
+      );
+      handleCloseModal();
+    }
+  };
 
-            handleCloseModal();
-          } else {
-            throw new Error(result.error || "Error al guardar");
-          }
-        } catch (error) {
-          console.error(
-            "❌ Error guardando en BD, usando estado local:",
-            error
-          );
+  const handleSaveMotivoAsesor = async () => {
+    const userId = selectedUser?.idUsuarioDigital;
+    if (!userId) return;
+    const motivoAsesor =
+      motivoNoAfiliacionAsesorInput.trim() === ""
+        ? null
+        : motivoNoAfiliacionAsesorInput.trim();
+    try {
+      const response = await fetch("/api/motivos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idUsuarioDigital: userId,
+          motivoNoAfiliacion: null,
+          motivoNoAfiliacionAsesor: motivoAsesor,
+        }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Error al guardar");
 
-          // Si falla la BD, guardar solo en estado local
-          setMotivosNoAfiliacion((prev) => ({
-            ...prev,
-            [userId]: motivoNoAfiliacion.trim(),
-          }));
-
-          alert(
-            `⚠️ Motivo guardado localmente para ${
-              selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
-            }\n(No se pudo guardar en BD - verificar permisos)`
-          );
-
-          handleCloseModal();
-        }
-      }
-    } else {
-      alert("Por favor ingresa un motivo de no afiliación");
+      setClientes((prev) =>
+        prev.map((u) =>
+          u.idUsuarioDigital === userId
+            ? { ...u, motivoNoAfiliacionAsesor: motivoAsesor }
+            : u
+        )
+      );
+      alert(
+        `✅ Motivo Asesor ${motivoAsesor ? "guardado" : "limpiado"} para ${
+          selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
+        }`
+      );
+      handleCloseAsesorModal();
+    } catch (error) {
+      console.error("❌ Error guardando en BD, usando estado local:", error);
+      setClientes((prev) =>
+        prev.map((u) =>
+          u.idUsuarioDigital === userId
+            ? { ...u, motivoNoAfiliacionAsesor: motivoAsesor }
+            : u
+        )
+      );
+      alert(
+        `⚠️ Motivo Asesor ${
+          motivoAsesor ? "guardado localmente" : "limpiado localmente"
+        } para ${
+          selectedUser?.nombrePreferido || selectedUser?.idUsuarioDigital
+        }\n(No se pudo guardar en BD)`
+      );
+      handleCloseAsesorModal();
     }
   };
 
@@ -2230,6 +2300,33 @@ export default function Home() {
                                       )}
                                     </td>
                                   );
+                                case "motivoNoAfiliacionAsesor":
+                                  return (
+                                    <td
+                                      key={col.id}
+                                      className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAsesorModal(row);
+                                      }}
+                                      title="Doble clic para agregar motivo asesor"
+                                    >
+                                      {row.motivoNoAfiliacionAsesor &&
+                                      row.motivoNoAfiliacionAsesor.trim() !==
+                                        "" ? (
+                                        <p
+                                          className="text-xs text-gray-800 dark:text-gray-200 whitespace-normal break-words leading-relaxed"
+                                          title={row.motivoNoAfiliacionAsesor}
+                                        >
+                                          {row.motivoNoAfiliacionAsesor}
+                                        </p>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">
+                                          -
+                                        </span>
+                                      )}
+                                    </td>
+                                  );
                                 case "motivoNoAfiliacion":
                                   return (
                                     <td
@@ -2242,7 +2339,7 @@ export default function Home() {
                                         row.idUsuarioDigital || ""
                                       ] ? (
                                         <p
-                                          className="text-xs text-gray-800 dark:text-gray-200 truncate leading-relaxed"
+                                          className="text-xs text-gray-800 dark:text-gray-200 whitespace-normal break-words leading-relaxed"
                                           title={
                                             row.motivoNoAfiliacion &&
                                             row.motivoNoAfiliacion.trim() !== ""
@@ -2490,6 +2587,90 @@ export default function Home() {
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
                   >
                     Guardar Motivo
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Modal para Motivo Asesor */}
+        {isModalAsesorOpen && (
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+              {/* Header del Modal */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Motivo Asesor
+                </h3>
+                <button
+                  onClick={handleCloseAsesorModal}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Información del Usuario */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Usuario:</span>{" "}
+                    {selectedUser?.nombrePreferido || "Sin nombre"}
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">ID:</span>{" "}
+                    {selectedUser?.idUsuarioDigital}
+                  </p>
+                </div>
+              </div>
+
+              {/* Formulario */}
+              <div className="p-6">
+                <div className="mb-4">
+                  <label
+                    htmlFor="motivoNoAfiliacionAsesor"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                  >
+                    Motivo Asesor
+                  </label>
+                  <textarea
+                    id="motivoNoAfiliacionAsesor"
+                    rows={4}
+                    value={motivoNoAfiliacionAsesorInput}
+                    onChange={(e) =>
+                      setMotivoNoAfiliacionAsesorInput(e.target.value)
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white resize-none"
+                    placeholder="Describe el motivo ingresado por el asesor (opcional)..."
+                    autoFocus
+                  />
+                </div>
+
+                {/* Botones */}
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={handleCloseAsesorModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md hover:bg-gray-200 dark:hover:bg-gray-500 focus:ring-2 focus:ring-gray-500 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSaveMotivoAsesor}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                  >
+                    Guardar Motivo Asesor
                   </button>
                 </div>
               </div>

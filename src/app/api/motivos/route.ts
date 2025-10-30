@@ -27,19 +27,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const idFromBody = body?.idUsuarioDigital;
-    const motivoNoAfiliacion = body?.motivoNoAfiliacion ?? body?.motivo;
+    const motivoNoAfiliacion = body?.motivoNoAfiliacion ?? body?.motivo ?? null;
+    const motivoNoAfiliacionAsesor = body?.motivoNoAfiliacionAsesor ?? null;
     const tipoMotivoReintento =
       body?.tipoMotivoReintento !== undefined ? body.tipoMotivoReintento : null;
 
-    if (
-      idFromBody === undefined ||
-      idFromBody === null ||
-      !motivoNoAfiliacion
-    ) {
+    const hasAlguno =
+      (typeof motivoNoAfiliacion === "string" &&
+        motivoNoAfiliacion.trim() !== "") ||
+      (typeof motivoNoAfiliacionAsesor === "string" &&
+        motivoNoAfiliacionAsesor.trim() !== "");
+
+    if (idFromBody === undefined || idFromBody === null || !hasAlguno) {
       return NextResponse.json(
         {
           success: false,
-          error: "ID de usuario y motivoNoAfiliacion son requeridos",
+          error:
+            "ID de usuario y al menos uno de los motivos (IT o Asesor) son requeridos",
         },
         { status: 400 }
       );
@@ -65,7 +69,16 @@ export async function POST(request: NextRequest) {
         cache: "no-store",
         body: JSON.stringify({
           idUsuarioDigital: idUsuarioDigitalNum,
-          motivoNoAfiliacion: String(motivoNoAfiliacion),
+          motivoNoAfiliacion:
+            typeof motivoNoAfiliacion === "string" &&
+            motivoNoAfiliacion.trim() !== ""
+              ? motivoNoAfiliacion
+              : null,
+          motivoNoAfiliacionAsesor:
+            typeof motivoNoAfiliacionAsesor === "string" &&
+            motivoNoAfiliacionAsesor.trim() !== ""
+              ? motivoNoAfiliacionAsesor
+              : null,
           tipoMotivoReintento: tipoMotivoReintento ?? null,
         }),
       }

@@ -6,6 +6,7 @@ export interface UsuarioDigitalUI {
   idUsuarioDigital: string;
   nombrePreferido?: string | null;
   motivoNoAfiliacion?: string | null;
+  motivoNoAfiliacionAsesor?: string | null;
   nombreCompletoContacto?: string | null;
   identificacion?: string | null;
   tipoIdentificacion?: string | null;
@@ -26,6 +27,7 @@ export interface UsuarioDigitalFromAPI {
   idUsuarioDigital: string | number;
   nombrePreferido?: string;
   motivoNoAfiliacion?: string | null;
+  motivoNoAfiliacionAsesor?: string | null;
   nombreCompletoContacto?: string;
   identificacion?: string;
   tipoIdentificacion?: string;
