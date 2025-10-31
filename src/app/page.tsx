@@ -1082,13 +1082,8 @@ export default function Home() {
   // Funciones para el modal
   const handleRowDoubleClick = (user: UsuarioDigitalUI) => {
     setSelectedUser(user);
-    // Si ya existe un motivo, pre-llenarlo en el textarea
-    const existingMotivo =
-      motivosNoAfiliacion[user.idUsuarioDigital || ""] ||
-      user.motivoNoAfiliacion ||
-      "";
-    setMotivoNoAfiliacion(existingMotivo);
-    setIsModalOpen(true);
+    setMotivoNoAfiliacionAsesorInput(user.motivoNoAfiliacionAsesor || "");
+    setIsModalAsesorOpen(true);
   };
 
   const handleCloseModal = () => {
@@ -2205,7 +2200,7 @@ export default function Home() {
                                 : "hover:bg-gray-50 dark:hover:bg-gray-700"
                             }`}
                             onDoubleClick={() => handleRowDoubleClick(row)}
-                            title="Doble clic para agregar motivo de no afiliación"
+                            title="Doble clic para agregar motivo asesor"
                           >
                             {columns.map((col) => {
                               switch (col.id) {
@@ -2332,6 +2327,8 @@ export default function Home() {
                                     <td
                                       key={col.id}
                                       className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
+                                      onDoubleClick={(e) => e.stopPropagation()}
+                                      onClick={(e) => e.stopPropagation()}
                                     >
                                       {(row.motivoNoAfiliacion &&
                                         row.motivoNoAfiliacion.trim() !== "") ||
