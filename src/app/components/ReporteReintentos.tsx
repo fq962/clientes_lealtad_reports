@@ -42,6 +42,7 @@ export default function ReporteReintentos({
   const [errorTipoMap, setErrorTipoMap] = useState<Record<string, string>>({});
   const [filtroTipoError, setFiltroTipoError] = useState<string>("");
   const [filtroSucursal, setFiltroSucursal] = useState<string>("");
+  const [activeView, setActiveView] = useState<"tabla" | "charts">("tabla");
   // Lazy loading de filas
   const INITIAL_PAGE_SIZE = 100;
   const PAGE_INCREMENT = 100;
@@ -421,6 +422,141 @@ export default function ReporteReintentos({
     return () => observer.disconnect();
   }, [visibleRows.length]);
 
+  // Agregación por usuario y clasificación de métricas solicitadas
+  const userStats = useMemo(() => {
+    const perUser: Record<string, { cnt2: number; cnt3: number }> = {};
+    for (const r of rows) {
+      const key =
+        r.id_usuario_digital != null ? String(r.id_usuario_digital) : "";
+      if (!key) continue;
+      const idTipo = r.id_tipo_evento;
+      const is2 = idTipo === 2 || idTipo === "2";
+      const is3 = idTipo === 3 || idTipo === "3";
+      if (!perUser[key]) perUser[key] = { cnt2: 0, cnt3: 0 };
+      if (is2) perUser[key].cnt2 += 1;
+      if (is3) perUser[key].cnt3 += 1;
+    }
+    const users = Object.keys(perUser);
+    let oneAttempt = 0;
+    let oneCorrection = 0;
+    let twoCorrections = 0;
+    let threeCorrections = 0;
+    let others = 0;
+    for (const uid of users) {
+      const { cnt2, cnt3 } = perUser[uid];
+      // 3 CORRECCIONES
+      if (cnt2 === 4 && cnt3 === 2) {
+        threeCorrections += 1;
+      }
+      // 2 CORRECCIONES
+      else if ((cnt2 === 4 && cnt3 === 1) || (cnt2 === 3 && cnt3 === 2)) {
+        twoCorrections += 1;
+      }
+      // 1 CORRECCIÓN
+      else if ((cnt2 === 3 && cnt3 === 1) || (cnt2 === 2 && cnt3 === 2)) {
+        oneCorrection += 1;
+      }
+      // 1 INTENTO
+      else if (cnt2 === 2 && cnt3 === 1) {
+        oneAttempt += 1;
+      }
+      // Otros/no clasificados
+      else {
+        others += 1;
+      }
+    }
+    return {
+      usersCount: users.length,
+      counts: {
+        oneAttempt,
+        oneCorrection,
+        twoCorrections,
+        threeCorrections,
+        others,
+      },
+    };
+  }, [rows]);
+
+  type DonutDatum = { label: string; value: number; color: string };
+  const donutData: DonutDatum[] = useMemo(() => {
+    const d: DonutDatum[] = [
+      {
+        label: "1 intento",
+        value: userStats.counts.oneAttempt,
+        color: "#3b82f6",
+      },
+      {
+        label: "1 corrección",
+        value: userStats.counts.oneCorrection,
+        color: "#10b981",
+      },
+      {
+        label: "2 correcciones",
+        value: userStats.counts.twoCorrections,
+        color: "#f59e0b",
+      },
+      {
+        label: "3 correcciones",
+        value: userStats.counts.threeCorrections,
+        color: "#ef4444",
+      },
+    ];
+    return d;
+  }, [userStats]);
+
+  const DonutChart = ({
+    data,
+    size = 220,
+    thickness = 36,
+  }: {
+    data: DonutDatum[];
+    size?: number;
+    thickness?: number;
+  }) => {
+    const total = data.reduce((s, it) => (s += it.value), 0);
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 4;
+    const ir = r - thickness;
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const polar = (angDeg: number, rad: number) => {
+      const a = toRad(angDeg);
+      return { x: cx + rad * Math.cos(a), y: cy + rad * Math.sin(a) };
+    };
+    const describeArc = (start: number, end: number) => {
+      const largeArc = end - start > 180 ? 1 : 0;
+      const p1 = polar(start, r);
+      const p2 = polar(end, r);
+      const p3 = polar(end, ir);
+      const p4 = polar(start, ir);
+      return [
+        `M ${p1.x} ${p1.y}`,
+        `A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y}`,
+        `L ${p3.x} ${p3.y}`,
+        `A ${ir} ${ir} 0 ${largeArc} 0 ${p4.x} ${p4.y}`,
+        "Z",
+      ].join(" ");
+    };
+    let current = -90; // iniciar en la parte superior
+    const segments = data.map((it, idx) => {
+      const sweep = total > 0 ? (it.value / total) * 360 : 0;
+      const start = current;
+      const end = current + sweep;
+      current = end;
+      return <path key={idx} d={describeArc(start, end)} fill={it.color} />;
+    });
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <g>
+          {segments}
+          {total === 0 && <circle cx={cx} cy={cy} r={r} fill="#f3f4f6" />}
+        </g>
+        {/* agujero central para asegurar donut */}
+        <circle cx={cx} cy={cy} r={ir} fill="#fff" />
+      </svg>
+    );
+  };
+
   // Helpers para exportar CSV compatible con Excel
   const csvEscape = (value: string): string => {
     const safe = (value ?? "")
@@ -691,325 +827,404 @@ export default function ReporteReintentos({
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
-          <thead className="bg-gray-50 dark:bg-gray-700">
-            <tr>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                id
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                id_usuario_digital
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                sucursal_venta
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Motivo
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                TIPO ERROR
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                tipo_evento
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                ocr_identificacion
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                analisis_similitud
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                imagen_frontal
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                imagen_trasera
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                selfie
-              </th>
-              <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                fecha_registro
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {isLoading ? (
-              <tr>
-                <td
-                  colSpan={12}
-                  className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
-                >
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <span className="ml-3">Cargando reintentos...</span>
-                  </div>
-                </td>
-              </tr>
-            ) : visibleRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={12}
-                  className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
-                >
-                  No hay datos de reintentos para el rango seleccionado
-                </td>
-              </tr>
-            ) : (
-              visibleRows.slice(0, visibleCount).map((r, idx) => {
-                const idKey =
-                  r.id_usuario_digital != null
-                    ? String(r.id_usuario_digital)
-                    : "";
-                const isFrequent = idKey && (countsByUserId[idKey] || 0) > 3;
-                const isUnique = idKey && (countsByUserId[idKey] || 0) === 1;
-                return (
-                  <tr
-                    key={idx}
-                    className={`${
-                      isFrequent
-                        ? "bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500"
-                        : isUnique
-                        ? "bg-sky-50 dark:bg-sky-900/20 border-l-4 border-sky-400"
-                        : ""
-                    } hover:bg-gray-50 dark:hover:bg-gray-700`}
-                  >
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
-                      {r.id ?? "-"}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
-                      {r.id_usuario_digital ?? "-"}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
-                      {r.sucursal_venta ?? "-"}
-                    </td>
-                    <td
-                      className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 cursor-pointer"
-                      onDoubleClick={() => openMotivoModalFor(r)}
-                      title="Doble clic para agregar/editar motivo de reintento"
-                    >
-                      {(() => {
-                        const fromApi = (r.motivo_reintento || "").toString();
-                        if (fromApi && fromApi.trim() !== "") {
-                          return (
-                            <span
-                              className="inline-block max-w-[320px] truncate align-middle"
-                              title={fromApi}
-                            >
-                              {fromApi}
-                            </span>
-                          );
-                        }
-                        const key = getRowKey(r);
-                        const val = key ? motivosMap[key] : "";
-                        if (val && val.trim() !== "") {
-                          return (
-                            <span
-                              className="inline-block max-w-[320px] truncate align-middle"
-                              title={val}
-                            >
-                              {val}
-                            </span>
-                          );
-                        }
-                        return (
-                          <span className="text-gray-400 italic">
-                            Agregar motivo…
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
-                      {(() => {
-                        const fromApi = (
-                          r.tipo_motivo_reintento || ""
-                        ).toString();
-                        const key = getRowKey(r);
-                        const value =
-                          fromApi || (key ? errorTipoMap[key] || "" : "");
-                        const onChange = (
-                          ev: React.ChangeEvent<HTMLSelectElement>
-                        ) => {
-                          const v = ev.target.value;
-                          if (!key) return;
-                          setErrorTipoMap((prev) => ({ ...prev, [key]: v }));
-                        };
-                        return (
-                          <select
-                            value={value}
-                            onChange={onChange}
-                            className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
-                          >
-                            <option value="">(sin tipo)</option>
-                            <option value="BIOMETRIA_FALLO">
-                              FOTO MAL TOMADA
-                            </option>
-                            <option value="PRUEBA_DE_IT">PRUEBA DE IT</option>
-                            <option value="BIOMETRIA">BIOMETRIA</option>
-                            <option value="OCR">OCR</option>
-                            <option value="ERROR APP">ERROR APP</option>
-                            <option value="OTRO ERROR">OTRO ERROR</option>
-                          </select>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 truncate">
-                      {(() => {
-                        const idTipo = r.id_tipo_evento;
-                        const txt = (r.tipo_evento || "")
-                          .toString()
-                          .trim()
-                          .toUpperCase();
-                        if (
-                          idTipo === 2 ||
-                          idTipo === "2" ||
-                          txt === "OPEN AI" ||
-                          txt === "OPENAI"
-                        ) {
-                          return (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                              OPEN AI
-                            </span>
-                          );
-                        }
-                        if (
-                          idTipo === 3 ||
-                          idTipo === "3" ||
-                          txt === "LAMDA" ||
-                          txt === "LAMBDA"
-                        ) {
-                          return (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-200 text-amber-900 dark:bg-amber-300/30 dark:text-amber-300">
-                              LAMDA
-                            </span>
-                          );
-                        }
-                        return r.tipo_evento ?? "-";
-                      })()}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-blue-600 dark:text-blue-400 truncate">
-                      {r.ocr_identificacion ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openJsonModal(
-                              r.ocr_identificacion,
-                              "OCR Identificación"
-                            )
-                          }
-                          className="underline hover:no-underline"
-                          title="Ver JSON de OCR"
-                        >
-                          Ver JSON
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 dark:text-gray-500">
-                          -
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-blue-600 dark:text-blue-400 truncate">
-                      {r.analisis_similitud ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openJsonModal(
-                              r.analisis_similitud,
-                              "Análisis de Similitud"
-                            )
-                          }
-                          className="underline hover:no-underline"
-                          title="Ver JSON de Análisis de Similitud"
-                        >
-                          Ver JSON
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 dark:text-gray-500">
-                          -
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-xs truncate">
-                      {r.imagen_frontal ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openImageModal(
-                              r.imagen_frontal as string,
-                              "Imagen frontal"
-                            )
-                          }
-                          className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
-                          title="Ver imagen frontal"
-                        >
-                          Ver
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-xs truncate">
-                      {r.imagen_trasera ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openImageModal(
-                              r.imagen_trasera as string,
-                              "Imagen trasera"
-                            )
-                          }
-                          className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
-                          title="Ver imagen trasera"
-                        >
-                          Ver
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-xs truncate">
-                      {r.selfie ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openImageModal(r.selfie as string, "Selfie")
-                          }
-                          className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
-                          title="Ver selfie"
-                        >
-                          Ver
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
-                      {r.fecha_registro
-                        ? formatHondurasDate(r.fecha_registro)
-                        : "-"}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-      {/* Sentinel para cargar más */}
-      <div ref={sentinelRef} className="h-6" />
-      {visibleCount < visibleRows.length && (
-        <div className="mt-2 flex justify-center">
+      {/* Selector de vista */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
           <button
             type="button"
-            onClick={() =>
-              setVisibleCount((c) =>
-                Math.min(c + PAGE_INCREMENT, visibleRows.length)
-              )
-            }
-            className="px-4 py-2 text-sm font-medium rounded-md bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+            onClick={() => setActiveView("tabla")}
+            className={`px-3 py-1.5 text-xs ${
+              activeView === "tabla"
+                ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+            }`}
+            title="Ver tabla"
           >
-            Cargar más ({visibleCount}/{visibleRows.length})
+            Tabla
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("charts")}
+            className={`px-3 py-1.5 text-xs ${
+              activeView === "charts"
+                ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+            }`}
+            title="Ver gráficos"
+          >
+            Gráficos
+          </button>
+        </div>
+      </div>
+
+      {activeView === "tabla" ? (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+              <thead className="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    id
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    id_usuario_digital
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    sucursal_venta
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Motivo
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    TIPO ERROR
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    tipo_evento
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    ocr_identificacion
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    analisis_similitud
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    imagen_frontal
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    imagen_trasera
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    selfie
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    fecha_registro
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {isLoading ? (
+                  <tr>
+                    <td
+                      colSpan={12}
+                      className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                    >
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        <span className="ml-3">Cargando reintentos...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : visibleRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={12}
+                      className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"
+                    >
+                      No hay datos de reintentos para el rango seleccionado
+                    </td>
+                  </tr>
+                ) : (
+                  visibleRows.slice(0, visibleCount).map((r, idx) => {
+                    const idKey =
+                      r.id_usuario_digital != null
+                        ? String(r.id_usuario_digital)
+                        : "";
+                    const isFrequent =
+                      idKey && (countsByUserId[idKey] || 0) > 3;
+                    const isUnique =
+                      idKey && (countsByUserId[idKey] || 0) === 1;
+                    return (
+                      <tr
+                        key={idx}
+                        className={`${
+                          isFrequent
+                            ? "bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500"
+                            : isUnique
+                            ? "bg-sky-50 dark:bg-sky-900/20 border-l-4 border-sky-400"
+                            : ""
+                        } hover:bg-gray-50 dark:hover:bg-gray-700`}
+                      >
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
+                          {r.id ?? "-"}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
+                          {r.id_usuario_digital ?? "-"}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 font-mono truncate">
+                          {r.sucursal_venta ?? "-"}
+                        </td>
+                        <td
+                          className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 cursor-pointer"
+                          onDoubleClick={() => openMotivoModalFor(r)}
+                          title="Doble clic para agregar/editar motivo de reintento"
+                        >
+                          {(() => {
+                            const fromApi = (
+                              r.motivo_reintento || ""
+                            ).toString();
+                            if (fromApi && fromApi.trim() !== "") {
+                              return (
+                                <span
+                                  className="inline-block max-w-[320px] truncate align-middle"
+                                  title={fromApi}
+                                >
+                                  {fromApi}
+                                </span>
+                              );
+                            }
+                            const key = getRowKey(r);
+                            const val = key ? motivosMap[key] : "";
+                            if (val && val.trim() !== "") {
+                              return (
+                                <span
+                                  className="inline-block max-w-[320px] truncate align-middle"
+                                  title={val}
+                                >
+                                  {val}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-gray-400 italic">
+                                Agregar motivo…
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
+                          {(() => {
+                            const fromApi = (
+                              r.tipo_motivo_reintento || ""
+                            ).toString();
+                            const key = getRowKey(r);
+                            const value =
+                              fromApi || (key ? errorTipoMap[key] || "" : "");
+                            const onChange = (
+                              ev: React.ChangeEvent<HTMLSelectElement>
+                            ) => {
+                              const v = ev.target.value;
+                              if (!key) return;
+                              setErrorTipoMap((prev) => ({
+                                ...prev,
+                                [key]: v,
+                              }));
+                            };
+                            return (
+                              <select
+                                value={value}
+                                onChange={onChange}
+                                className="px-2 py-1 text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md"
+                              >
+                                <option value="">(sin tipo)</option>
+                                <option value="BIOMETRIA_FALLO">
+                                  FOTO MAL TOMADA
+                                </option>
+                                <option value="PRUEBA_DE_IT">
+                                  PRUEBA DE IT
+                                </option>
+                                <option value="BIOMETRIA">BIOMETRIA</option>
+                                <option value="OCR">OCR</option>
+                                <option value="ERROR APP">ERROR APP</option>
+                                <option value="OTRO ERROR">OTRO ERROR</option>
+                              </select>
+                            );
+                          })()}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100 truncate">
+                          {(() => {
+                            const idTipo = r.id_tipo_evento;
+                            const txt = (r.tipo_evento || "")
+                              .toString()
+                              .trim()
+                              .toUpperCase();
+                            if (
+                              idTipo === 2 ||
+                              idTipo === "2" ||
+                              txt === "OPEN AI" ||
+                              txt === "OPENAI"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                  OPEN AI
+                                </span>
+                              );
+                            }
+                            if (
+                              idTipo === 3 ||
+                              idTipo === "3" ||
+                              txt === "LAMDA" ||
+                              txt === "LAMBDA"
+                            ) {
+                              return (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-200 text-amber-900 dark:bg-amber-300/30 dark:text-amber-300">
+                                  LAMDA
+                                </span>
+                              );
+                            }
+                            return r.tipo_evento ?? "-";
+                          })()}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-blue-600 dark:text-blue-400 truncate">
+                          {r.ocr_identificacion ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openJsonModal(
+                                  r.ocr_identificacion,
+                                  "OCR Identificación"
+                                )
+                              }
+                              className="underline hover:no-underline"
+                              title="Ver JSON de OCR"
+                            >
+                              Ver JSON
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500">
+                              -
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-blue-600 dark:text-blue-400 truncate">
+                          {r.analisis_similitud ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openJsonModal(
+                                  r.analisis_similitud,
+                                  "Análisis de Similitud"
+                                )
+                              }
+                              className="underline hover:no-underline"
+                              title="Ver JSON de Análisis de Similitud"
+                            >
+                              Ver JSON
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500">
+                              -
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs truncate">
+                          {r.imagen_frontal ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openImageModal(
+                                  r.imagen_frontal as string,
+                                  "Imagen frontal"
+                                )
+                              }
+                              className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                              title="Ver imagen frontal"
+                            >
+                              Ver
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs truncate">
+                          {r.imagen_trasera ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openImageModal(
+                                  r.imagen_trasera as string,
+                                  "Imagen trasera"
+                                )
+                              }
+                              className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                              title="Ver imagen trasera"
+                            >
+                              Ver
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs truncate">
+                          {r.selfie ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openImageModal(r.selfie as string, "Selfie")
+                              }
+                              className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                              title="Ver selfie"
+                            >
+                              Ver
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-xs text-gray-900 dark:text-gray-100">
+                          {r.fecha_registro
+                            ? formatHondurasDate(r.fecha_registro)
+                            : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Sentinel para cargar más */}
+          <div ref={sentinelRef} className="h-6" />
+          {visibleCount < visibleRows.length && (
+            <div className="mt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={() =>
+                  setVisibleCount((c) =>
+                    Math.min(c + PAGE_INCREMENT, visibleRows.length)
+                  )
+                }
+                className="px-4 py-2 text-sm font-medium rounded-md bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                Cargar más ({visibleCount}/{visibleRows.length})
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Distribución por tipo de intento/corrección
+              </h4>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {userStats.usersCount} usuarios
+              </span>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <DonutChart data={donutData} />
+              <div className="flex-1 w-full">
+                <ul className="space-y-2">
+                  {donutData.map((d, i) => (
+                    <li key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: d.color }}
+                        />
+                        <span className="text-sm text-gray-800 dark:text-gray-200">
+                          {d.label}
+                        </span>
+                      </div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {d.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       )}
       {motivoModalOpen && (

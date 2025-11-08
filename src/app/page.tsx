@@ -1092,6 +1092,17 @@ export default function Home() {
     setMotivoNoAfiliacion("");
   };
 
+  // Abrir modal de Motivo IT desde la celda
+  const handleOpenItModal = (user: UsuarioDigitalUI) => {
+    setSelectedUser(user);
+    const existingMotivo =
+      motivosNoAfiliacion[user.idUsuarioDigital || ""] ||
+      user.motivoNoAfiliacion ||
+      "";
+    setMotivoNoAfiliacion(existingMotivo);
+    setIsModalOpen(true);
+  };
+
   // Abrir/cerrar modal de Motivo Asesor
   const handleOpenAsesorModal = (user: UsuarioDigitalUI) => {
     setSelectedUser(user);
@@ -2327,8 +2338,15 @@ export default function Home() {
                                     <td
                                       key={col.id}
                                       className={`${col.widthClass} px-3 py-3 text-sm text-gray-900 dark:text-gray-100`}
-                                      onDoubleClick={(e) => e.stopPropagation()}
-                                      onClick={(e) => e.stopPropagation()}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenItModal(row);
+                                      }}
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenItModal(row);
+                                      }}
+                                      title="Click para agregar motivo IT"
                                     >
                                       {(row.motivoNoAfiliacion &&
                                         row.motivoNoAfiliacion.trim() !== "") ||
