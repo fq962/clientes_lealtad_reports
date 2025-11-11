@@ -214,7 +214,7 @@ export default function Home() {
   }, [fotosItems]);
   const fotosFiltrados = useMemo(() => {
     // Filtro por sucursal
-    let base =
+    const base =
       filtroSucursalFotos === ""
         ? fotosItems
         : filtroSucursalFotos === "__NULL__"
