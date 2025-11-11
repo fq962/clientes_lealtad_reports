@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type {
   UsuarioDigitalUI,
   UsuarioDigitalFromAPI,
@@ -61,12 +61,23 @@ export default function Home() {
   // Búsqueda
   const [searchQuery, setSearchQuery] = useState("");
   const [activeView, setActiveView] = useState<
-    "usuarios" | "reintentos" | "global"
+    "usuarios" | "reintentos" | "global" | "metricas"
   >("usuarios");
   // Filtro por origen de creación (no visible en tabla)
   const [originFilter, setOriginFilter] = useState<"ALL" | "WEB" | "APP">(
     "APP"
   );
+
+  // Tabs para Reporte Métricas
+  const [metricasTab, setMetricasTab] = useState<
+    | "afiliacionIntentos"
+    | "tiempoAfiliacionIntento"
+    | "proveedores"
+    | "fotosTienda"
+  >("afiliacionIntentos");
+  const USE_FAKE_METRICAS = false;
+  const [showCompareIntentos, setShowCompareIntentos] = useState(false);
+  const [showCompareMinutos, setShowCompareMinutos] = useState(false);
 
   // Estado para Reporte Global
   type ReporteGlobalItem = {
@@ -143,7 +154,7 @@ export default function Home() {
     pTotal: number;
   };
   const [intentosRows, setIntentosRows] = useState<IntentosRow[]>([]);
-  const [intentosTotals, setIntentosTotals] = useState<{
+  type IntentosTotals = {
     total: number;
     c1: number;
     c2: number;
@@ -151,8 +162,12 @@ export default function Home() {
     c4: number;
     c6: number;
     cNull: number;
-  } | null>(null);
+  };
+  const [intentosTotals, setIntentosTotals] = useState<IntentosTotals | null>(
+    null
+  );
   const [intentosAll, setIntentosAll] = useState<ReporteGlobalItem[]>([]);
+  const [tiempoAll, setTiempoAll] = useState<ReporteGlobalItem[]>([]);
   const [intentosDetail, setIntentosDetail] = useState<
     ReporteGlobalItem[] | null
   >(null);
@@ -160,6 +175,311 @@ export default function Home() {
   const [intentosDetailKeys, setIntentosDetailKeys] = useState<string[]>([]);
   const [showGlobalPromedio, setShowGlobalPromedio] = useState<boolean>(false);
   const [promedioIsLoading, setPromedioIsLoading] = useState<boolean>(false);
+  // Evitar múltiples llamadas al cargar la pestaña de métricas de intentos
+  const intentosLoadedRef = useRef<boolean>(false);
+  // Filtro sucursal para Afiliación X Intentos
+  const [filtroSucursalIntentos, setFiltroSucursalIntentos] =
+    useState<string>("");
+  // Filtros de fecha por tabla (A: principal, B: comparación)
+  const [fechaInicioA, setFechaInicioA] = useState<string>(getTodayDate());
+  const [fechaFinA, setFechaFinA] = useState<string>(getTodayDate());
+  const [fechaInicioB, setFechaInicioB] = useState<string>("");
+  const [fechaFinB, setFechaFinB] = useState<string>("");
+  // Filtros y estado para Fotos Tienda
+  const [fechaInicioFotos, setFechaInicioFotos] = useState<string>(
+    getTodayDate()
+  );
+  const [fechaFinFotos, setFechaFinFotos] = useState<string>(getTodayDate());
+  type FotoItem = {
+    id: number | string;
+    nombre_preferido: string | null;
+    sucursal_venta: string | null;
+    asesor_venta: string | null;
+    url_imagen_frontal: string | null;
+    url_imagen_trasera: string | null;
+  };
+  const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
+  const [fotosIsLoading, setFotosIsLoading] = useState<boolean>(false);
+  const [fotosError, setFotosError] = useState<string | null>(null);
+  const [filtroSucursalFotos, setFiltroSucursalFotos] = useState<string>("");
+  const [fotosSearch, setFotosSearch] = useState<string>("");
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const sucursalesFotos = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of fotosItems) {
+      const s = (it.sucursal_venta || "").toString().trim();
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [fotosItems]);
+  const fotosFiltrados = useMemo(() => {
+    // Filtro por sucursal
+    let base =
+      filtroSucursalFotos === ""
+        ? fotosItems
+        : filtroSucursalFotos === "__NULL__"
+        ? fotosItems.filter((r) => !(r.sucursal_venta || "").toString().trim())
+        : fotosItems.filter(
+            (r) => (r.sucursal_venta || "").toString() === filtroSucursalFotos
+          );
+    // Filtro por texto (nombre, asesor, sucursal)
+    const q = fotosSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((r) => {
+      const nombre = (r.nombre_preferido || "").toLowerCase();
+      const asesor = (r.asesor_venta || "").toLowerCase();
+      const suc = (r.sucursal_venta || "").toLowerCase();
+      return nombre.includes(q) || asesor.includes(q) || suc.includes(q);
+    });
+  }, [fotosItems, filtroSucursalFotos, fotosSearch]);
+  // Filtros de fecha para Tiempo Afiliación X Intento
+  const [fechaInicioTiempo, setFechaInicioTiempo] = useState<string>(
+    getTodayDate()
+  );
+  const [fechaFinTiempo, setFechaFinTiempo] = useState<string>(getTodayDate());
+  const sucursalesIntentos = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of intentosAll) {
+      const s = (it.sucursal_venta || "").toString().trim();
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [intentosAll]);
+  // Columnas dinámicas para Afiliación X Intentos (según buckets presentes)
+  const intentosDynamic = useMemo(() => {
+    type RowAgg = {
+      total: number;
+      nullCount: number;
+      counts: Record<number, number>;
+    };
+    const byDate = new Map<string, RowAgg>();
+    const bucketSet = new Set<number>();
+
+    for (const it of intentosAll) {
+      const rec = it as Record<string, unknown>;
+      const fecha = String(
+        (rec["fecha_creacion_date"] as string | undefined) ||
+          (rec["fecha_creacion"] as string | undefined) ||
+          ""
+      );
+      if (!fecha) continue;
+      if (fechaInicioA && fecha < fechaInicioA) continue;
+      if (fechaFinA && fecha > fechaFinA) continue;
+
+      if (!byDate.has(fecha)) {
+        byDate.set(fecha, { total: 0, nullCount: 0, counts: {} });
+      }
+      const entry = byDate.get(fecha)!;
+      entry.total += 1;
+
+      const vRaw = rec["conteo_intentos"] as unknown;
+      const vNum =
+        vRaw === null || vRaw === undefined
+          ? null
+          : typeof vRaw === "number"
+          ? vRaw
+          : Number(vRaw as string);
+
+      if (vNum === null || Number.isNaN(vNum)) {
+        entry.nullCount += 1;
+      } else {
+        entry.counts[vNum] = (entry.counts[vNum] || 0) + 1;
+        bucketSet.add(vNum);
+      }
+    }
+
+    const buckets = Array.from(bucketSet).sort((a, b) => a - b);
+    const rows = Array.from(byDate.entries())
+      .map(([fecha, entry]) => ({ fecha, ...entry }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const hasNull = rows.some((r) => r.nullCount > 0);
+
+    return { buckets, rows, hasNull };
+  }, [intentosAll, fechaInicioA, fechaFinA]);
+  // Dinámica de promedios de minutos por bucket (Tiempo Afiliación X Intento)
+  const tiempoDynamic = useMemo(() => {
+    type BucketAgg = { sum: number; count: number };
+    type RowAgg = {
+      total: BucketAgg;
+      nullAgg: BucketAgg;
+      buckets: Record<number, BucketAgg>;
+    };
+    const byDate = new Map<string, RowAgg>();
+    const bucketSet = new Set<number>();
+
+    for (const it of tiempoAll) {
+      const rec = it as Record<string, unknown>;
+      const fecha = String(
+        (rec["fecha_creacion_date"] as string | undefined) ||
+          (rec["fecha_creacion"] as string | undefined) ||
+          ""
+      );
+      if (!fecha) continue;
+      if (fechaInicioTiempo && fecha < fechaInicioTiempo) continue;
+      if (fechaFinTiempo && fecha > fechaFinTiempo) continue;
+
+      if (!byDate.has(fecha)) {
+        byDate.set(fecha, {
+          total: { sum: 0, count: 0 },
+          nullAgg: { sum: 0, count: 0 },
+          buckets: {},
+        });
+      }
+      const entry = byDate.get(fecha)!;
+
+      const vRaw = rec["conteo_intentos"] as unknown;
+      const vNum =
+        vRaw === null || vRaw === undefined
+          ? null
+          : typeof vRaw === "number"
+          ? vRaw
+          : Number(vRaw as string);
+
+      const mRaw = rec["minutos"] as unknown;
+      const mNum =
+        mRaw === null || mRaw === undefined
+          ? null
+          : typeof mRaw === "number"
+          ? mRaw
+          : Number(mRaw as string);
+      if (mNum == null || Number.isNaN(mNum)) continue; // si no hay minutos, no se promedia
+
+      entry.total.sum += mNum;
+      entry.total.count += 1;
+
+      if (vNum === null || Number.isNaN(vNum)) {
+        entry.nullAgg.sum += mNum;
+        entry.nullAgg.count += 1;
+      } else {
+        if (!entry.buckets[vNum]) entry.buckets[vNum] = { sum: 0, count: 0 };
+        entry.buckets[vNum].sum += mNum;
+        entry.buckets[vNum].count += 1;
+        bucketSet.add(vNum);
+      }
+    }
+
+    const buckets = Array.from(bucketSet).sort((a, b) => a - b);
+    const rows = Array.from(byDate.entries())
+      .map(([fecha, agg]) => ({
+        fecha,
+        agg,
+      }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const hasNull = rows.some((r) => r.agg.nullAgg.count > 0);
+
+    return { buckets, rows, hasNull };
+  }, [tiempoAll, fechaInicioTiempo, fechaFinTiempo]);
+  const intentosRowsFiltrados = useMemo(() => {
+    if (USE_FAKE_METRICAS) return null as unknown as IntentosRow[];
+    // Filtrar intentosAll por sucursal y re-agrupar
+    const filtered: ReporteGlobalItem[] =
+      filtroSucursalIntentos === ""
+        ? intentosAll
+        : filtroSucursalIntentos === "__NULL__"
+        ? intentosAll.filter((r) => !(r.sucursal_venta || "").toString().trim())
+        : intentosAll.filter(
+            (r) =>
+              (r.sucursal_venta || "").toString() === filtroSucursalIntentos
+          );
+
+    const byDate: Record<
+      string,
+      {
+        total: number;
+        c1: number;
+        c2: number;
+        c3: number;
+        c4: number;
+        c6: number;
+        cNull: number;
+      }
+    > = {};
+
+    for (const it of filtered) {
+      const rec = it as Record<string, unknown>;
+      const fecha = String(
+        (rec["fecha_creacion_date"] as string | undefined) ||
+          (rec["fecha_creacion"] as string | undefined) ||
+          ""
+      );
+      if (!fecha) continue;
+      if (!byDate[fecha]) {
+        byDate[fecha] = {
+          total: 0,
+          c1: 0,
+          c2: 0,
+          c3: 0,
+          c4: 0,
+          c6: 0,
+          cNull: 0,
+        };
+      }
+      byDate[fecha].total += 1;
+      const vRaw = rec["conteo_intentos"] as unknown;
+      const vNum =
+        vRaw === null || vRaw === undefined
+          ? null
+          : typeof vRaw === "number"
+          ? vRaw
+          : Number(vRaw as string);
+      if (vNum === null || Number.isNaN(vNum)) {
+        byDate[fecha].cNull += 1;
+      } else if (vNum === 1) {
+        byDate[fecha].c1 += 1;
+      } else if (vNum === 2) {
+        byDate[fecha].c2 += 1;
+      } else if (vNum === 3) {
+        byDate[fecha].c3 += 1;
+      } else if (vNum === 4) {
+        byDate[fecha].c4 += 1;
+      } else if (vNum === 6) {
+        byDate[fecha].c6 += 1;
+      }
+    }
+
+    const rows: IntentosRow[] = Object.keys(byDate)
+      .sort()
+      .map((fecha) => {
+        const d = byDate[fecha];
+        const total = Math.max(1, d.total);
+        const pct = (n: number) => (n / total) * 100;
+        return {
+          fecha,
+          c1: d.c1,
+          p1: pct(d.c1),
+          c2: d.c2,
+          p2: pct(d.c2),
+          c3: d.c3,
+          p3: pct(d.c3),
+          c4: d.c4,
+          p4: pct(d.c4),
+          c6: d.c6,
+          p6: pct(d.c6),
+          cNull: d.cNull,
+          pNull: pct(d.cNull),
+          total: d.total,
+          pTotal: 100,
+        };
+      });
+    return rows;
+  }, [USE_FAKE_METRICAS, intentosAll, filtroSucursalIntentos]);
+  const intentosTotalsFiltrados = useMemo(() => {
+    if (USE_FAKE_METRICAS) return null;
+    const src = intentosRowsFiltrados ?? [];
+    return src.reduce(
+      (acc, r) => {
+        acc.total += r.total;
+        acc.c1 += r.c1;
+        acc.c2 += r.c2;
+        acc.c3 += r.c3;
+        acc.c4 += r.c4;
+        acc.c6 += r.c6;
+        acc.cNull += r.cNull;
+        return acc;
+      },
+      { total: 0, c1: 0, c2: 0, c3: 0, c4: 0, c6: 0, cNull: 0 }
+    );
+  }, [USE_FAKE_METRICAS, intentosRowsFiltrados]);
   const [promedioError, setPromedioError] = useState<string | null>(null);
   type PromedioRow = {
     fecha: string;
@@ -319,7 +639,7 @@ export default function Home() {
     } catch (error) {
       console.error("Error cargando motivos:", error);
     }
-  }, []);
+  }, [fechaInicioA, fechaFinA]);
 
   // Abrir detalle filtrado por fecha y bucket de intentos
   const openIntentosDetail = useCallback(
@@ -541,23 +861,89 @@ export default function Home() {
       setIntentosIsLoading(true);
       setIntentosError(null);
 
-      // Un solo request amplio (page=1&limit=2000)
-      const all: ReporteGlobalItem[] = [];
-      {
-        const url = new URL(
-          `${API_BASE}/v1/afiliamiento/reporte-global-afiliaciones`
-        );
-        url.searchParams.set("page", "1");
-        url.searchParams.set("limit", "100000");
-        const resp = await fetch(url.toString(), { cache: "no-store" });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        const items = Array.isArray(json?.data?.items) ? json.data.items : [];
-        for (const it of items) all.push(it as ReporteGlobalItem);
-      }
+      // Cargar datos crudos del endpoint interno y normalizar (métricas por id_usuario_digital por fecha)
+      const params = new URLSearchParams();
+      if (fechaInicioA) params.set("fechaInicio", fechaInicioA);
+      if (fechaFinA) params.set("fechaFin", fechaFinA);
+      const resp = await fetch(
+        `/api/afiliaciones-por-intentos?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const raw: unknown[] = Array.isArray(json?.data) ? json.data : [];
 
-      // Agrupar por fecha_creacion_date y contar intentos
-      const filteredAll: ReporteGlobalItem[] = [];
+      // Deduplicar por (fecha_creacion, id_usuario_digital)
+      type Normalizado = {
+        fecha_creacion: string;
+        sucursal_venta: string | null;
+        conteo_intentos: number | null;
+        minutos: number | null; // tiempo_total_proceso_minutos
+      };
+      const byKey = new Map<string, Normalizado>();
+      for (const it of raw) {
+        const r = it as Record<string, unknown>;
+        const fecha = String((r["fecha_creacion"] as string) || "");
+        if (!fecha) continue;
+        const id = r["id_usuario_digital"];
+        if (id === null || id === undefined) continue;
+        // Agrupar únicamente por id_usuario_digital (ignorar otros campos para unicidad)
+        const key = String(id);
+
+        const reintRaw = r["cantidad_reintentos"] as unknown;
+        const reintNum =
+          reintRaw === null || reintRaw === undefined
+            ? null
+            : typeof reintRaw === "number"
+            ? reintRaw
+            : Number(reintRaw as string);
+        let conteo: number | null;
+        if (reintNum === null || Number.isNaN(reintNum)) {
+          conteo = null; // Sin Intento (cantidad_reintentos null)
+        } else {
+          // Usar cantidad_reintentos tal cual (sin tope); columnas son dinámicas
+          conteo = reintNum;
+        }
+        const suc = (r["sucursal_venta"] as string | null) ?? null;
+        const minRaw = r["tiempo_total_proceso_minutos"] as unknown;
+        const minutos =
+          minRaw === null || minRaw === undefined
+            ? null
+            : typeof minRaw === "number"
+            ? minRaw
+            : Number(minRaw as string);
+
+        const prev = byKey.get(key);
+        if (!prev) {
+          byKey.set(key, {
+            fecha_creacion: fecha,
+            sucursal_venta: suc,
+            conteo_intentos: conteo,
+            minutos,
+          });
+        } else {
+          // Completar sucursal si estaba vacía y preferir bucket mayor si difiere
+          if (!prev.sucursal_venta && suc) prev.sucursal_venta = suc;
+          // Conservar una única fecha; si difieren, mantener la existente (o elegir la más reciente)
+          // Aquí mantenemos la primera encontrada para estabilidad
+          if (
+            conteo !== null &&
+            (prev.conteo_intentos === null ||
+              (typeof prev.conteo_intentos === "number" &&
+                conteo > prev.conteo_intentos))
+          ) {
+            prev.conteo_intentos = conteo;
+          }
+          if (prev.minutos == null && minutos != null) {
+            prev.minutos = minutos;
+          }
+        }
+      }
+      const filteredAll = Array.from(
+        byKey.values()
+      ) as unknown as ReporteGlobalItem[];
+
+      // Agrupar por fecha_creacion y contar buckets (1,2,3,4,6 y Sin Intento)
       const byDate: Record<
         string,
         {
@@ -571,15 +957,8 @@ export default function Home() {
         }
       > = {};
 
-      for (const it of all) {
+      for (const it of filteredAll) {
         const rec = it as Record<string, unknown>;
-        const originRaw = rec["origen_creacion"] as unknown;
-        const originUpper =
-          originRaw == null ? "" : String(originRaw).toUpperCase();
-        if (originUpper !== "APP") {
-          continue; // Filtrar métricas solo para origen APP
-        }
-        filteredAll.push(it as ReporteGlobalItem);
         const fecha = String(
           (rec["fecha_creacion_date"] as string | undefined) ||
             (rec["fecha_creacion"] as string | undefined) ||
@@ -675,8 +1054,136 @@ export default function Home() {
     } finally {
       setIntentosIsLoading(false);
     }
-  }, []);
+  }, [fechaInicioA, fechaFinA]);
 
+  // Cargar dataset para Tiempo Afiliación X Intento (independiente del anterior)
+  const loadTiempoMetrics = useCallback(async () => {
+    try {
+      // Reutiliza el mismo service con rango independiente
+      const params = new URLSearchParams();
+      if (fechaInicioTiempo) params.set("fechaInicio", fechaInicioTiempo);
+      if (fechaFinTiempo) params.set("fechaFin", fechaFinTiempo);
+      const resp = await fetch(
+        `/api/afiliaciones-por-intentos?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const raw: unknown[] = Array.isArray(json?.data) ? json.data : [];
+
+      type Normalizado = {
+        fecha_creacion: string;
+        sucursal_venta: string | null;
+        conteo_intentos: number | null;
+        minutos: number | null;
+      };
+      const byKey = new Map<string, Normalizado>();
+      for (const it of raw) {
+        const r = it as Record<string, unknown>;
+        const fecha = String((r["fecha_creacion"] as string) || "");
+        if (!fecha) continue;
+        const id = r["id_usuario_digital"];
+        if (id === null || id === undefined) continue;
+        const key = String(id);
+
+        const reintRaw = r["cantidad_reintentos"] as unknown;
+        const reintNum =
+          reintRaw === null || reintRaw === undefined
+            ? null
+            : typeof reintRaw === "number"
+            ? reintRaw
+            : Number(reintRaw as string);
+        const minRaw = r["tiempo_total_proceso_minutos"] as unknown;
+        const minutos =
+          minRaw === null || minRaw === undefined
+            ? null
+            : typeof minRaw === "number"
+            ? minRaw
+            : Number(minRaw as string);
+        const suc = (r["sucursal_venta"] as string | null) ?? null;
+
+        const prev = byKey.get(key);
+        if (!prev) {
+          byKey.set(key, {
+            fecha_creacion: fecha,
+            sucursal_venta: suc,
+            conteo_intentos:
+              reintNum === null || Number.isNaN(reintNum) ? null : reintNum,
+            minutos,
+          });
+        } else {
+          if (!prev.sucursal_venta && suc) prev.sucursal_venta = suc;
+          // Mantener el mayor bucket si difiere
+          if (
+            reintNum !== null &&
+            !Number.isNaN(reintNum) &&
+            (prev.conteo_intentos === null ||
+              (typeof prev.conteo_intentos === "number" &&
+                reintNum > prev.conteo_intentos))
+          ) {
+            prev.conteo_intentos = reintNum;
+          }
+          if (prev.minutos == null && minutos != null) {
+            prev.minutos = minutos;
+          }
+        }
+      }
+      const normalized = Array.from(
+        byKey.values()
+      ) as unknown as ReporteGlobalItem[];
+      setTiempoAll(normalized);
+    } catch (e) {
+      // En errores, dejar dataset vacío para evitar inconsistencia
+      setTiempoAll([]);
+    }
+  }, [fechaInicioTiempo, fechaFinTiempo]);
+
+  // Efecto: cargar tiempo cuando se entra al tab correspondiente
+  useEffect(() => {
+    if (USE_FAKE_METRICAS) return;
+    if (
+      activeView === "metricas" &&
+      metricasTab === "tiempoAfiliacionIntento"
+    ) {
+      loadTiempoMetrics();
+    }
+  }, [
+    USE_FAKE_METRICAS,
+    activeView,
+    metricasTab,
+    fechaInicioTiempo,
+    fechaFinTiempo,
+    loadTiempoMetrics,
+  ]);
+
+  // Cargar datos de Afiliación X Intentos al entrar al tab de Métricas (una sola vez por entrada)
+  useEffect(() => {
+    if (USE_FAKE_METRICAS) return;
+    if (activeView === "metricas" && metricasTab === "afiliacionIntentos") {
+      if (!intentosLoadedRef.current) {
+        intentosLoadedRef.current = true;
+        loadIntentosMetrics();
+      }
+    } else {
+      // Resetear la marca al salir del tab para permitir recarga cuando se vuelva a entrar
+      intentosLoadedRef.current = false;
+    }
+  }, [USE_FAKE_METRICAS, activeView, metricasTab, loadIntentosMetrics]);
+
+  // Reconsultar cuando cambian las fechas seleccionadas en Afiliación X Intentos
+  useEffect(() => {
+    if (USE_FAKE_METRICAS) return;
+    if (activeView === "metricas" && metricasTab === "afiliacionIntentos") {
+      loadIntentosMetrics();
+    }
+  }, [
+    USE_FAKE_METRICAS,
+    activeView,
+    metricasTab,
+    fechaInicioA,
+    fechaFinA,
+    loadIntentosMetrics,
+  ]);
   // Cargar promedio de minutos por intento (APP)
   const loadPromedioMinutos = useCallback(async () => {
     try {
@@ -823,6 +1330,61 @@ export default function Home() {
       setPromedioIsLoading(false);
     }
   }, []);
+
+  // Cargar Fotos Tienda (hook) y efectos
+  const loadFotosTienda = useCallback(async () => {
+    try {
+      setFotosIsLoading(true);
+      setFotosError(null);
+      const params = new URLSearchParams();
+      if (fechaInicioFotos) params.set("fechaInicio", fechaInicioFotos);
+      if (fechaFinFotos) params.set("fechaFin", fechaFinFotos);
+      const resp = await fetch(`/api/afiliaciones-fotos?${params.toString()}`, {
+        cache: "no-store",
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+      const mapped: FotoItem[] = data.map((r) => ({
+        id: (r?.id as number) ?? String(r?.id ?? ""),
+        nombre_preferido: (r?.nombre_preferido as string) ?? null,
+        sucursal_venta: (r?.sucursal_venta as string) ?? null,
+        asesor_venta: (r?.asesor_venta as string) ?? null,
+        url_imagen_frontal: (r?.url_imagen_frontal as string) ?? null,
+        url_imagen_trasera: (r?.url_imagen_trasera as string) ?? null,
+      }));
+      setFotosItems(mapped);
+    } catch (e) {
+      setFotosItems([]);
+      setFotosError("No se pudieron cargar las fotos");
+    } finally {
+      setFotosIsLoading(false);
+    }
+  }, [fechaInicioFotos, fechaFinFotos]);
+
+  useEffect(() => {
+    if (USE_FAKE_METRICAS) return;
+    if (activeView === "metricas" && metricasTab === "fotosTienda") {
+      loadFotosTienda();
+    }
+  }, [
+    USE_FAKE_METRICAS,
+    activeView,
+    metricasTab,
+    fechaInicioFotos,
+    fechaFinFotos,
+    loadFotosTienda,
+  ]);
+
+  // Cerrar vista ampliada con Escape
+  useEffect(() => {
+    if (!imagePreviewUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setImagePreviewUrl(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [imagePreviewUrl]);
 
   // Efecto para manejar la tecla Escape para cerrar el modal
   useEffect(() => {
@@ -1395,6 +1957,13 @@ export default function Home() {
                 >
                   Reporte Global
                 </button>
+                <button
+                  onClick={() => setActiveView("metricas")}
+                  className="h-9 px-3 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  title="Ver Reporte Métricas"
+                >
+                  REPORTE METRICAS
+                </button>
                 <div className="h-9 px-2 text-xs flex items-center bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-800">
                   {isLoading
                     ? "Cargando..."
@@ -1434,7 +2003,1755 @@ export default function Home() {
         )}
 
         {/* Tabla responsiva */}
-        {activeView === "reintentos" ? (
+        {activeView === "metricas" ? (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("afiliacionIntentos")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "afiliacionIntentos"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Afiliación por intentos"
+                  >
+                    Afiliación X Intentos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("tiempoAfiliacionIntento")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "tiempoAfiliacionIntento"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Tiempo de afiliación por intento"
+                  >
+                    Tiempo Afiliación X Intento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("proveedores")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "proveedores"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Métricas por proveedores"
+                  >
+                    Proveedores
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("fotosTienda")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "fotosTienda"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Fotos Tienda"
+                  >
+                    Fotos Tienda
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-6">
+              {metricasTab === "afiliacionIntentos" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Afiliación X Intentos
+                  </h3>
+
+                  <div className="mt-3 flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Sucursal
+                      </label>
+                      <select
+                        value={filtroSucursalIntentos}
+                        onChange={(e) =>
+                          setFiltroSucursalIntentos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todas</option>
+                        <option value="__NULL__">Sin Sucursal</option>
+                        {sucursalesIntentos.map((s: string) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaInicioA}
+                        onChange={(e) => setFechaInicioA(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaFinA}
+                        onChange={(e) => setFechaFinA(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          intentosLoadedRef.current = true;
+                          loadIntentosMetrics();
+                        }}
+                        className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title="Buscar métricas con los filtros seleccionados"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                  </div>
+
+                  {intentosError && !USE_FAKE_METRICAS && (
+                    <div className="mt-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                      {intentosError}
+                    </div>
+                  )}
+
+                  {intentosIsLoading && !USE_FAKE_METRICAS ? (
+                    <div className="mt-6 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                      Cargando métricas...
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex items-start gap-3">
+                      <div className="overflow-x-auto">
+                        <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                          <thead className="bg-[#6885a7]">
+                            <tr>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Fecha/hora
+                              </th>
+                              {intentosDynamic.buckets.map((b) => (
+                                <>
+                                  <th
+                                    key={`h-b-${b}`}
+                                    className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                  >
+                                    {b === 1 || b === 0 ? b : b - 1}{" "}
+                                    {b === 1
+                                      ? "Intento"
+                                      : b === 0
+                                      ? "Sin Intento"
+                                      : "Correcciones"}
+                                  </th>
+                                  <th
+                                    key={`h-bpct-${b}`}
+                                    className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                  ></th>
+                                </>
+                              ))}
+                              {intentosDynamic.hasNull && (
+                                <>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Sin Intento
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                                </>
+                              )}
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Suma Total
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {(() => {
+                              // Render dinámico real
+                              if (!USE_FAKE_METRICAS) {
+                                const dynRows = intentosDynamic.rows;
+                                if (dynRows.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td
+                                        colSpan={
+                                          2 +
+                                          intentosDynamic.buckets.length * 2 +
+                                          (intentosDynamic.hasNull ? 2 : 0)
+                                        }
+                                        className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                      >
+                                        Sin datos para mostrar
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                return dynRows.map((r, idx) => (
+                                  <tr
+                                    key={idx}
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                  >
+                                    <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                      {r.fecha}
+                                    </td>
+                                    {intentosDynamic.buckets.map((b) => {
+                                      const v =
+                                        (r.counts &&
+                                          (r.counts as Record<number, number>)[
+                                            b
+                                          ]) ||
+                                        0;
+                                      const t = r.total || 0;
+                                      const pct = t > 0 ? (v / t) * 100 : 0;
+                                      return (
+                                        <>
+                                          <td
+                                            key={`c-${idx}-${b}`}
+                                            className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                          >
+                                            {v}
+                                          </td>
+                                          <td
+                                            key={`cp-${idx}-${b}`}
+                                            className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                          >
+                                            {`${pct.toFixed(2)}%`}
+                                          </td>
+                                        </>
+                                      );
+                                    })}
+                                    {intentosDynamic.hasNull && (
+                                      <>
+                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                          {r.nullCount}
+                                        </td>
+                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                          {(() => {
+                                            const t = r.total || 0;
+                                            const v = r.nullCount || 0;
+                                            const pct =
+                                              t > 0 ? (v / t) * 100 : 0;
+                                            return `${pct.toFixed(2)}%`;
+                                          })()}
+                                        </td>
+                                      </>
+                                    )}
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.total}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      100%
+                                    </td>
+                                  </tr>
+                                ));
+                              }
+
+                              // Fallback: datos falsos (modo demo)
+                              const rows: IntentosRow[] = USE_FAKE_METRICAS
+                                ? (() => {
+                                    const base = [
+                                      {
+                                        fecha: "2025-11-01",
+                                        c1: 10,
+                                        c2: 7,
+                                        c3: 5,
+                                        cNull: 2,
+                                        total: 24,
+                                      },
+                                      {
+                                        fecha: "2025-11-02",
+                                        c1: 8,
+                                        c2: null as unknown as number,
+                                        c3: 3,
+                                        cNull: 1,
+                                        total: 18,
+                                      },
+                                      {
+                                        fecha: "2025-11-03",
+                                        c1: 12,
+                                        c2: 9,
+                                        c3: 4,
+                                        cNull: 3,
+                                        total: 28,
+                                      },
+                                      {
+                                        fecha: "2025-11-04",
+                                        c1: 7,
+                                        c2: 5,
+                                        c3: null as unknown as number,
+                                        cNull: 2,
+                                        total: 16,
+                                      },
+                                      {
+                                        fecha: "2025-11-05",
+                                        c1: 15,
+                                        c2: 11,
+                                        c3: 6,
+                                        cNull: 4,
+                                        total: 36,
+                                      },
+                                      {
+                                        fecha: "2025-11-06",
+                                        c1: 9,
+                                        c2: 7,
+                                        c3: 3,
+                                        cNull: null as unknown as number,
+                                        total: 21,
+                                      },
+                                      {
+                                        fecha: "2025-11-07",
+                                        c1: 11,
+                                        c2: 8,
+                                        c3: 5,
+                                        cNull: 1,
+                                        total: 25,
+                                      },
+                                      {
+                                        fecha: "2025-11-08",
+                                        c1: 5,
+                                        c2: null as unknown as number,
+                                        c3: null as unknown as number,
+                                        cNull: null as unknown as number,
+                                        total: 5,
+                                      },
+                                    ] as Array<{
+                                      fecha: string;
+                                      c1: number;
+                                      c2: number | null;
+                                      c3: number | null;
+                                      cNull: number | null;
+                                      total: number;
+                                    }>;
+                                    return base.map((b) => {
+                                      const c2 = b.c2 ?? 0;
+                                      const c3 = b.c3 ?? 0;
+                                      const cNull = b.cNull ?? 0;
+                                      const total = Math.max(1, b.total);
+                                      const pct = (n: number) =>
+                                        (n / total) * 100;
+                                      const row: IntentosRow = {
+                                        fecha: b.fecha,
+                                        c1: b.c1,
+                                        p1: pct(b.c1),
+                                        c2,
+                                        p2: pct(c2),
+                                        c3,
+                                        p3: pct(c3),
+                                        c4: 0,
+                                        p4: 0,
+                                        c6: 0,
+                                        p6: 0,
+                                        cNull,
+                                        pNull: pct(cNull),
+                                        total: b.total,
+                                        pTotal: 100,
+                                      };
+                                      return row;
+                                    });
+                                  })()
+                                : intentosRowsFiltrados &&
+                                  intentosRowsFiltrados.length > 0
+                                ? intentosRowsFiltrados
+                                : intentosRows;
+                              const filteredRowsA = rows.filter((r) => {
+                                const d = r.fecha;
+                                if (fechaInicioA && d < fechaInicioA)
+                                  return false;
+                                if (fechaFinA && d > fechaFinA) return false;
+                                return true;
+                              });
+                              if (filteredRowsA.length === 0) {
+                                return (
+                                  <tr>
+                                    <td
+                                      colSpan={11}
+                                      className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                    >
+                                      Sin datos para mostrar
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              return filteredRowsA.map((r, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                    {r.fecha}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {r.c1}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      const t = r.total || 0;
+                                      const pct = t > 0 ? (r.c1 / t) * 100 : 0;
+                                      return `${pct.toFixed(2)}%`;
+                                    })()}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.c2 == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {r.c2}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.c2 == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {(() => {
+                                      const t = r.total || 0;
+                                      const v = r.c2 ?? 0;
+                                      const pct = t > 0 ? (v / t) * 100 : 0;
+                                      return `${pct.toFixed(2)}%`;
+                                    })()}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.c3 == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {r.c3}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.c3 == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {(() => {
+                                      const t = r.total || 0;
+                                      const v = r.c3 ?? 0;
+                                      const pct = t > 0 ? (v / t) * 100 : 0;
+                                      return `${pct.toFixed(2)}%`;
+                                    })()}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.cNull == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {r.cNull}
+                                  </td>
+                                  <td
+                                    className={`px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 ${
+                                      r.cNull == null
+                                        ? "bg-gray-200 dark:bg-gray-700"
+                                        : ""
+                                    }`}
+                                  >
+                                    {(() => {
+                                      const t = r.total || 0;
+                                      const v = r.cNull ?? 0;
+                                      const pct = t > 0 ? (v / t) * 100 : 0;
+                                      return `${pct.toFixed(2)}%`;
+                                    })()}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {r.total}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      const t = r.total || 0;
+                                      const pct = t > 0 ? 100 : 0;
+                                      return `${pct.toFixed(2)}%`;
+                                    })()}
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                          <tfoot className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                              <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                SUMA TOTAL
+                              </th>
+                              {(() => {
+                                if (!USE_FAKE_METRICAS) {
+                                  const totalsByBucket =
+                                    intentosDynamic.buckets.reduce((acc, b) => {
+                                      acc[b] = intentosDynamic.rows.reduce(
+                                        (sum, r) =>
+                                          sum +
+                                          ((r.counts &&
+                                            (
+                                              r.counts as Record<number, number>
+                                            )[b]) ||
+                                            0),
+                                        0
+                                      );
+                                      return acc;
+                                    }, {} as Record<number, number>);
+                                  const totalAll = intentosDynamic.rows.reduce(
+                                    (sum, r) => sum + (r.total || 0),
+                                    0
+                                  );
+                                  const nullTotal = intentosDynamic.rows.reduce(
+                                    (sum, r) => sum + (r.nullCount || 0),
+                                    0
+                                  );
+                                  const pct = (n: number) =>
+                                    `${
+                                      totalAll > 0
+                                        ? ((n / totalAll) * 100).toFixed(2)
+                                        : "0.00"
+                                    }%`;
+                                  return (
+                                    <>
+                                      {intentosDynamic.buckets.map((b) => (
+                                        <>
+                                          <th
+                                            key={`ft-b-${b}`}
+                                            className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                          >
+                                            {totalsByBucket[b] || 0}
+                                          </th>
+                                          <th
+                                            key={`ft-bpct-${b}`}
+                                            className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                          >
+                                            {pct(totalsByBucket[b] || 0)}
+                                          </th>
+                                        </>
+                                      ))}
+                                      {intentosDynamic.hasNull && (
+                                        <>
+                                          <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                            {nullTotal}
+                                          </th>
+                                          <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                            {pct(nullTotal)}
+                                          </th>
+                                        </>
+                                      )}
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totalAll}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        100%
+                                      </th>
+                                    </>
+                                  );
+                                }
+                                // Modo fake: mantener estructura básica
+                                return (
+                                  <>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0.00%
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0.00%
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0.00%
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      0.00%
+                                    </th>
+                                  </>
+                                );
+                              })()}
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                      <div className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowCompareIntentos((prev) => !prev)
+                          }
+                          className="h-9 px-3 text-xs font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors"
+                          title="Comparar con versión anterior"
+                        >
+                          Comparar Version Anterior
+                        </button>
+                      </div>
+                      {showCompareIntentos && (
+                        <div className="overflow-x-auto">
+                          <div className="mb-2 flex items-end gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                                Inicio
+                              </label>
+                              <input
+                                type="date"
+                                value={fechaInicioB}
+                                onChange={(e) =>
+                                  setFechaInicioB(e.target.value)
+                                }
+                                className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                                Fin
+                              </label>
+                              <input
+                                type="date"
+                                value={fechaFinB}
+                                onChange={(e) => setFechaFinB(e.target.value)}
+                                className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                              />
+                            </div>
+                          </div>
+                          <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                            <thead className="bg-[#6885a7]">
+                              <tr>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Fecha/hora
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  1 Intento
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  2 Intentos
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  3 Intentos
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Sin Intento
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Suma Total
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                              {(() => {
+                                const rows = USE_FAKE_METRICAS
+                                  ? [
+                                      {
+                                        fecha: "2025-10-25",
+                                        c1: 9,
+                                        c2: 6,
+                                        c3: 4,
+                                        cNull: 3,
+                                        total: 22,
+                                      },
+                                      {
+                                        fecha: "2025-10-26",
+                                        c1: 7,
+                                        c2: 5,
+                                        c3: 2,
+                                        cNull: 2,
+                                        total: 16,
+                                      },
+                                      {
+                                        fecha: "2025-10-27",
+                                        c1: 10,
+                                        c2: 8,
+                                        c3: 3,
+                                        cNull: 1,
+                                        total: 22,
+                                      },
+                                    ]
+                                  : intentosRows;
+                                const filteredRowsB = rows.filter((r) => {
+                                  const d = r.fecha;
+                                  if (fechaInicioB && d < fechaInicioB)
+                                    return false;
+                                  if (fechaFinB && d > fechaFinB) return false;
+                                  return true;
+                                });
+                                if (filteredRowsB.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td
+                                        colSpan={11}
+                                        className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                      >
+                                        Sin datos para mostrar
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                                return filteredRowsB.map((r, idx) => (
+                                  <tr
+                                    key={idx}
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                  >
+                                    <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                      {r.fecha}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.c1}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {(() => {
+                                        const t = r.total || 0;
+                                        const pct =
+                                          t > 0 ? (r.c1 / t) * 100 : 0;
+                                        return `${pct.toFixed(2)}%`;
+                                      })()}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.c2}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {(() => {
+                                        const t = r.total || 0;
+                                        const v = r.c2 ?? 0;
+                                        const pct = t > 0 ? (v / t) * 100 : 0;
+                                        return `${pct.toFixed(2)}%`;
+                                      })()}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.c3}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {(() => {
+                                        const t = r.total || 0;
+                                        const v = r.c3 ?? 0;
+                                        const pct = t > 0 ? (v / t) * 100 : 0;
+                                        return `${pct.toFixed(2)}%`;
+                                      })()}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.cNull}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {(() => {
+                                        const t = r.total || 0;
+                                        const v = r.cNull ?? 0;
+                                        const pct = t > 0 ? (v / t) * 100 : 0;
+                                        return `${pct.toFixed(2)}%`;
+                                      })()}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {r.total}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {(() => {
+                                        const t = r.total || 0;
+                                        const pct = t > 0 ? 100 : 0;
+                                        return `${pct.toFixed(2)}%`;
+                                      })()}
+                                    </td>
+                                  </tr>
+                                ));
+                              })()}
+                            </tbody>
+                            <tfoot className="bg-gray-50 dark:bg-gray-700">
+                              <tr>
+                                <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                  SUMA TOTAL
+                                </th>
+                                {(() => {
+                                  // Recalcular totales con el rango de fechas aplicado
+                                  const rowsForTotals = (() => {
+                                    const base = USE_FAKE_METRICAS
+                                      ? [
+                                          {
+                                            fecha: "2025-10-25",
+                                            c1: 9,
+                                            c2: 6,
+                                            c3: 4,
+                                            cNull: 3,
+                                            total: 22,
+                                          },
+                                          {
+                                            fecha: "2025-10-26",
+                                            c1: 7,
+                                            c2: 5,
+                                            c3: 2,
+                                            cNull: 2,
+                                            total: 16,
+                                          },
+                                          {
+                                            fecha: "2025-10-27",
+                                            c1: 10,
+                                            c2: 8,
+                                            c3: 3,
+                                            cNull: 1,
+                                            total: 22,
+                                          },
+                                        ]
+                                      : intentosRows;
+                                    return base.filter((r) => {
+                                      const d = r.fecha;
+                                      if (fechaInicioB && d < fechaInicioB)
+                                        return false;
+                                      if (fechaFinB && d > fechaFinB)
+                                        return false;
+                                      return true;
+                                    });
+                                  })();
+                                  const totals = rowsForTotals.reduce(
+                                    (acc, r) => {
+                                      acc.c1 += r.c1;
+                                      acc.c2 += r.c2;
+                                      acc.c3 += r.c3;
+                                      acc.cNull += r.cNull;
+                                      acc.total += r.total;
+                                      return acc;
+                                    },
+                                    { c1: 0, c2: 0, c3: 0, cNull: 0, total: 0 }
+                                  );
+                                  return (
+                                    <>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totals?.c1 ?? 0}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {(() => {
+                                          const t = totals?.total || 0;
+                                          const pct =
+                                            t > 0
+                                              ? ((totals?.c1 || 0) / t) * 100
+                                              : 0;
+                                          return `${pct.toFixed(2)}%`;
+                                        })()}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totals?.c2 ?? 0}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {(() => {
+                                          const t = totals?.total || 0;
+                                          const pct =
+                                            t > 0
+                                              ? ((totals?.c2 || 0) / t) * 100
+                                              : 0;
+                                          return `${pct.toFixed(2)}%`;
+                                        })()}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totals?.c3 ?? 0}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {(() => {
+                                          const t = totals?.total || 0;
+                                          const pct =
+                                            t > 0
+                                              ? ((totals?.c3 || 0) / t) * 100
+                                              : 0;
+                                          return `${pct.toFixed(2)}%`;
+                                        })()}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totals?.cNull ?? 0}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {(() => {
+                                          const t = totals?.total || 0;
+                                          const pct =
+                                            t > 0
+                                              ? ((totals?.cNull || 0) / t) * 100
+                                              : 0;
+                                          return `${pct.toFixed(2)}%`;
+                                        })()}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totals?.total ?? 0}
+                                      </th>
+                                      <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {(() => {
+                                          const t = totals?.total || 0;
+                                          const pct = t > 0 ? 100 : 0;
+                                          return `${pct.toFixed(2)}%`;
+                                        })()}
+                                      </th>
+                                    </>
+                                  );
+                                })()}
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {metricasTab === "tiempoAfiliacionIntento" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Tiempo Afiliación X Intento
+                  </h3>
+
+                  <div className="mt-3 flex items-end gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-100 mb-1">
+                        Sucursal
+                      </label>
+                      <select
+                        value={filtroSucursalFotos}
+                        onChange={(e) => setFiltroSucursalFotos(e.target.value)}
+                        className="h-10 w-64 px-3 text-base border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todas</option>
+                        <option value="__NULL__">Sin Sucursal</option>
+                        {sucursalesFotos.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaInicioTiempo}
+                        onChange={(e) => setFechaInicioTiempo(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaFinTiempo}
+                        onChange={(e) => setFechaFinTiempo(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          loadTiempoMetrics();
+                        }}
+                        className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title="Buscar promedios con los filtros seleccionados"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-start gap-3">
+                    <div className="overflow-x-auto">
+                      <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                        <thead className="bg-[#6885a7]">
+                          <tr>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Fecha
+                            </th>
+                            {tiempoDynamic.buckets.map((b) => (
+                              <th
+                                key={`th-t-${b}`}
+                                className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                              >
+                                {b === 1 || b === 0 ? b : b - 1}{" "}
+                                {b === 1
+                                  ? "Intento (avg)"
+                                  : b === 0
+                                  ? "Sin Intento (avg)"
+                                  : "Correcciones (avg)"}
+                              </th>
+                            ))}
+                            {tiempoDynamic.hasNull && (
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Sin Intento (avg)
+                              </th>
+                            )}
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Promedio Total
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                          {tiempoDynamic.rows.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={
+                                  2 +
+                                  tiempoDynamic.buckets.length +
+                                  (tiempoDynamic.hasNull ? 1 : 0)
+                                }
+                                className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                              >
+                                Sin datos para mostrar
+                              </td>
+                            </tr>
+                          ) : (
+                            tiempoDynamic.rows.map(({ fecha, agg }, idx) => (
+                              <tr
+                                key={`trow-${idx}`}
+                                className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                              >
+                                <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                  {fecha}
+                                </td>
+                                {tiempoDynamic.buckets.map((b) => {
+                                  const a = agg.buckets[b];
+                                  const avg =
+                                    a && a.count > 0 ? a.sum / a.count : null;
+                                  return (
+                                    <td
+                                      key={`tcell-${idx}-${b}`}
+                                      className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                    >
+                                      {avg == null ? "-" : avg.toFixed(2)}
+                                    </td>
+                                  );
+                                })}
+                                {tiempoDynamic.hasNull && (
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {agg.nullAgg.count > 0
+                                      ? (
+                                          agg.nullAgg.sum / agg.nullAgg.count
+                                        ).toFixed(2)
+                                      : "-"}
+                                  </td>
+                                )}
+                                <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {agg.total.count > 0
+                                    ? (agg.total.sum / agg.total.count).toFixed(
+                                        2
+                                      )
+                                    : "-"}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        <tfoot className="bg-gray-50 dark:bg-gray-700">
+                          <tr>
+                            <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                              PROMEDIO TOTAL
+                            </th>
+                            {(() => {
+                              // promedio global por bucket (ponderado por count)
+                              const totalsByBucket =
+                                tiempoDynamic.buckets.reduce((acc, b) => {
+                                  let sum = 0;
+                                  let count = 0;
+                                  for (const r of tiempoDynamic.rows) {
+                                    const a = r.agg.buckets[b];
+                                    if (a && a.count > 0) {
+                                      sum += a.sum;
+                                      count += a.count;
+                                    }
+                                  }
+                                  acc[b] =
+                                    count > 0 ? (sum / count).toFixed(2) : "-";
+                                  return acc;
+                                }, {} as Record<number, string | "-">);
+                              const nullAvg = (() => {
+                                if (!tiempoDynamic.hasNull) return "-";
+                                let sum = 0;
+                                let count = 0;
+                                for (const r of tiempoDynamic.rows) {
+                                  sum += r.agg.nullAgg.sum;
+                                  count += r.agg.nullAgg.count;
+                                }
+                                return count > 0
+                                  ? (sum / count).toFixed(2)
+                                  : "-";
+                              })();
+                              const totalAvg = (() => {
+                                let sum = 0;
+                                let count = 0;
+                                for (const r of tiempoDynamic.rows) {
+                                  sum += r.agg.total.sum;
+                                  count += r.agg.total.count;
+                                }
+                                return count > 0
+                                  ? (sum / count).toFixed(2)
+                                  : "-";
+                              })();
+                              return (
+                                <>
+                                  {tiempoDynamic.buckets.map((b) => (
+                                    <th
+                                      key={`tft-${b}`}
+                                      className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
+                                    >
+                                      {totalsByBucket[b]}
+                                    </th>
+                                  ))}
+                                  {tiempoDynamic.hasNull && (
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {nullAvg}
+                                    </th>
+                                  )}
+                                  <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {totalAvg}
+                                  </th>
+                                </>
+                              );
+                            })()}
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    <div className="shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setShowCompareMinutos((prev) => !prev)}
+                        className="h-9 px-3 text-xs font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors"
+                        title="Comparar con versión anterior"
+                      >
+                        Comparar Version Anterior
+                      </button>
+                    </div>
+                    {showCompareMinutos && (
+                      <div className="overflow-x-auto">
+                        <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                          <thead className="bg-[#6885a7]">
+                            <tr>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Fecha
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                1 Intento
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                2 Intentos
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                3 Intentos
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Suma Total
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {(() => {
+                              const rows = USE_FAKE_METRICAS
+                                ? [
+                                    {
+                                      fecha: "2025-10-25",
+                                      c1: 1.05,
+                                      c2: 0.92,
+                                      c3: 0.58,
+                                      total: 1.05 + 0.92 + 0.58,
+                                    },
+                                    {
+                                      fecha: "2025-10-26",
+                                      c1: 0.88,
+                                      c2: 0.74,
+                                      c3: 0.49,
+                                      total: 0.88 + 0.74 + 0.49,
+                                    },
+                                    {
+                                      fecha: "2025-10-27",
+                                      c1: 1.12,
+                                      c2: 0.97,
+                                      c3: 0.61,
+                                      total: 1.12 + 0.97 + 0.61,
+                                    },
+                                  ]
+                                : [];
+                              if (rows.length === 0) {
+                                return (
+                                  <tr>
+                                    <td
+                                      colSpan={5}
+                                      className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                    >
+                                      Sin datos para mostrar
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              return rows.map((r, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                    {r.fecha}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {r.c1.toFixed(2)}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {r.c2.toFixed(2)}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {r.c3.toFixed(2)}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(r.total as number).toFixed(2)}
+                                  </td>
+                                </tr>
+                              ));
+                            })()}
+                          </tbody>
+                          <tfoot className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                              <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                SUMA TOTAL
+                              </th>
+                              {(() => {
+                                const rows = USE_FAKE_METRICAS
+                                  ? [
+                                      {
+                                        c1: 1.05,
+                                        c2: 0.92,
+                                        c3: 0.58,
+                                        total: 1.05 + 0.92 + 0.58,
+                                      },
+                                      {
+                                        c1: 0.88,
+                                        c2: 0.74,
+                                        c3: 0.49,
+                                        total: 0.88 + 0.74 + 0.49,
+                                      },
+                                      {
+                                        c1: 1.12,
+                                        c2: 0.97,
+                                        c3: 0.61,
+                                        total: 1.12 + 0.97 + 0.61,
+                                      },
+                                    ]
+                                  : [];
+                                const totals = rows.reduce(
+                                  (acc, r) => {
+                                    acc.c1 += r.c1;
+                                    acc.c2 += r.c2;
+                                    acc.c3 += r.c3;
+                                    acc.total += r.total;
+                                    return acc;
+                                  },
+                                  { c1: 0, c2: 0, c3: 0, total: 0 }
+                                );
+                                return (
+                                  <>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {totals.c1.toFixed(2)}
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {totals.c2.toFixed(2)}
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {totals.c3.toFixed(2)}
+                                    </th>
+                                    <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {totals.total.toFixed(2)}
+                                    </th>
+                                  </>
+                                );
+                              })()}
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {metricasTab === "fotosTienda" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Fotos Tienda
+                  </h3>
+
+                  <div className="mt-3 flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Sucursal
+                      </label>
+                      <select
+                        value={filtroSucursalFotos}
+                        onChange={(e) => setFiltroSucursalFotos(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todas</option>
+                        <option value="__NULL__">Sin Sucursal</option>
+                        {sucursalesFotos.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaInicioFotos}
+                        onChange={(e) => setFechaInicioFotos(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaFinFotos}
+                        onChange={(e) => setFechaFinFotos(e.target.value)}
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <button
+                        type="button"
+                        onClick={loadFotosTienda}
+                        className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title="Buscar fotos del rango"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                    <div className="ml-auto">
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Buscar
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Nombre, asesor o sucursal"
+                        value={fotosSearch}
+                        onChange={(e) => setFotosSearch(e.target.value)}
+                        className="h-9 w-60 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {fotosError && (
+                    <div className="mt-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                      {fotosError}
+                    </div>
+                  )}
+
+                  {fotosIsLoading ? (
+                    <div className="mt-6 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                      Cargando fotos...
+                    </div>
+                  ) : fotosFiltrados.length === 0 ? (
+                    <div className="mt-6 text-center text-gray-500 dark:text-gray-400">
+                      Sin fotos para mostrar
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {fotosFiltrados.map((f) => (
+                        <div
+                          key={String(f.id)}
+                          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
+                        >
+                          <div className="flex gap-1 bg-gray-50 dark:bg-gray-700 p-1">
+                            <div className="w-1/2 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                              {f.url_imagen_frontal ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={f.url_imagen_frontal}
+                                  alt="Frontal"
+                                  className="object-cover w-full h-full cursor-zoom-in"
+                                  onClick={() =>
+                                    setImagePreviewUrl(
+                                      f.url_imagen_frontal as string
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <span className="text-xs text-gray-400">
+                                  Sin frontal
+                                </span>
+                              )}
+                            </div>
+                            <div className="w-1/2 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                              {f.url_imagen_trasera ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={f.url_imagen_trasera}
+                                  alt="Trasera"
+                                  className="object-cover w-full h-full cursor-zoom-in"
+                                  onClick={() =>
+                                    setImagePreviewUrl(
+                                      f.url_imagen_trasera as string
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <span className="text-xs text-gray-400">
+                                  Sin trasera
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-3">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {f.nombre_preferido || "Sin nombre"}
+                            </div>
+                            <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                              <span className="font-medium">Sucursal:</span>{" "}
+                              {f.sucursal_venta || "—"}
+                            </div>
+                            <div className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
+                              <span className="font-medium">Asesor:</span>{" "}
+                              {f.asesor_venta || "—"}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Modal de vista ampliada de imagen */}
+              {imagePreviewUrl && (
+                <div
+                  className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"
+                  onClick={() => setImagePreviewUrl(null)}
+                >
+                  <div
+                    className="max-w-5xl max-h-[90vh]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Vista ampliada"
+                      className="max-h-[90vh] max-w-[90vw] object-contain rounded-md shadow-2xl"
+                    />
+                  </div>
+                </div>
+              )}
+              {metricasTab === "proveedores" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Proveedores
+                  </h3>
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                      <thead className="bg-[#6885a7]">
+                        <tr>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Fecha
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Microsoft
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            %
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Facebook
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            %
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Apple
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            %
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Credencial
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            %
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            Suma Total
+                          </th>
+                          <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                            %
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {(() => {
+                          const rows = USE_FAKE_METRICAS
+                            ? [
+                                {
+                                  fecha: "2025-11-01",
+                                  microsoft: 12,
+                                  facebook: 8,
+                                  apple: 5,
+                                  credencial: 2,
+                                },
+                                {
+                                  fecha: "2025-11-02",
+                                  microsoft: 9,
+                                  facebook: 6,
+                                  apple: 3,
+                                  credencial: 1,
+                                },
+                                {
+                                  fecha: "2025-11-03",
+                                  microsoft: 11,
+                                  facebook: 7,
+                                  apple: 4,
+                                  credencial: 3,
+                                },
+                                {
+                                  fecha: "2025-11-04",
+                                  microsoft: 7,
+                                  facebook: 5,
+                                  apple: 2,
+                                  credencial: 2,
+                                },
+                                {
+                                  fecha: "2025-11-05",
+                                  microsoft: 15,
+                                  facebook: 11,
+                                  apple: 6,
+                                  credencial: 4,
+                                },
+                              ].map((r) => ({
+                                ...r,
+                                total:
+                                  r.microsoft +
+                                  r.facebook +
+                                  r.apple +
+                                  r.credencial,
+                              }))
+                            : [];
+                          if (rows.length === 0) {
+                            return (
+                              <tr>
+                                <td
+                                  colSpan={11}
+                                  className="px-6 py-10 text-center text-gray-500 dark:text-gray-400"
+                                >
+                                  Sin datos para mostrar
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return rows.map((r, idx) => (
+                            <tr
+                              key={idx}
+                              className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                              <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                {r.fecha}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {r.microsoft}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                                {(() => {
+                                  const t = r.total || 0;
+                                  const pct =
+                                    t > 0 ? (r.microsoft / t) * 100 : 0;
+                                  return `${pct.toFixed(2)}%`;
+                                })()}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {r.facebook}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                                {(() => {
+                                  const t = r.total || 0;
+                                  const pct =
+                                    t > 0 ? (r.facebook / t) * 100 : 0;
+                                  return `${pct.toFixed(2)}%`;
+                                })()}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {r.apple}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                                {(() => {
+                                  const t = r.total || 0;
+                                  const pct = t > 0 ? (r.apple / t) * 100 : 0;
+                                  return `${pct.toFixed(2)}%`;
+                                })()}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {r.credencial}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                                {(() => {
+                                  const t = r.total || 0;
+                                  const pct =
+                                    t > 0 ? (r.credencial / t) * 100 : 0;
+                                  return `${pct.toFixed(2)}%`;
+                                })()}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {r.total}
+                              </td>
+                              <td className="px-2 py-1 text-xs text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                                {(() => {
+                                  const t = r.total || 0;
+                                  const pct = t > 0 ? 100 : 0;
+                                  return `${pct.toFixed(2)}%`;
+                                })()}
+                              </td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                      <tfoot className="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                          <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                            SUMA TOTAL
+                          </th>
+                          {(() => {
+                            const rows = USE_FAKE_METRICAS
+                              ? [
+                                  {
+                                    microsoft: 12,
+                                    facebook: 8,
+                                    apple: 5,
+                                    credencial: 2,
+                                    total: 12 + 8 + 5 + 2,
+                                  },
+                                  {
+                                    microsoft: 9,
+                                    facebook: 6,
+                                    apple: 3,
+                                    credencial: 1,
+                                    total: 9 + 6 + 3 + 1,
+                                  },
+                                  {
+                                    microsoft: 11,
+                                    facebook: 7,
+                                    apple: 4,
+                                    credencial: 3,
+                                    total: 11 + 7 + 4 + 3,
+                                  },
+                                  {
+                                    microsoft: 7,
+                                    facebook: 5,
+                                    apple: 2,
+                                    credencial: 2,
+                                    total: 7 + 5 + 2 + 2,
+                                  },
+                                  {
+                                    microsoft: 15,
+                                    facebook: 11,
+                                    apple: 6,
+                                    credencial: 4,
+                                    total: 15 + 11 + 6 + 4,
+                                  },
+                                ]
+                              : [];
+                            const totals = rows.reduce(
+                              (acc, r) => {
+                                acc.microsoft += r.microsoft;
+                                acc.facebook += r.facebook;
+                                acc.apple += r.apple;
+                                acc.credencial += r.credencial;
+                                acc.total += r.total;
+                                return acc;
+                              },
+                              {
+                                microsoft: 0,
+                                facebook: 0,
+                                apple: 0,
+                                credencial: 0,
+                                total: 0,
+                              }
+                            );
+                            return (
+                              <>
+                                <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {totals.microsoft}
+                                </th>
+                                <th className="px-1 py-1 text-center text-[11px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {(() => {
+                                    const t = totals.total || 0;
+                                    const pct =
+                                      t > 0 ? (totals.microsoft / t) * 100 : 0;
+                                    return `${pct.toFixed(2)}%`;
+                                  })()}
+                                </th>
+                                <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {totals.facebook}
+                                </th>
+                                <th className="px-1 py-1 text-center text-[11px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {(() => {
+                                    const t = totals.total || 0;
+                                    const pct =
+                                      t > 0 ? (totals.facebook / t) * 100 : 0;
+                                    return `${pct.toFixed(2)}%`;
+                                  })()}
+                                </th>
+                                <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {totals.apple}
+                                </th>
+                                <th className="px-1 py-1 text-center text-[11px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {(() => {
+                                    const t = totals.total || 0;
+                                    const pct =
+                                      t > 0 ? (totals.apple / t) * 100 : 0;
+                                    return `${pct.toFixed(2)}%`;
+                                  })()}
+                                </th>
+                                <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {totals.credencial}
+                                </th>
+                                <th className="px-1 py-1 text-center text-[11px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {(() => {
+                                    const t = totals.total || 0;
+                                    const pct =
+                                      t > 0 ? (totals.credencial / t) * 100 : 0;
+                                    return `${pct.toFixed(2)}%`;
+                                  })()}
+                                </th>
+                                <th className="px-1 py-1 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {totals.total}
+                                </th>
+                                <th className="px-1 py-1 text-center text-[11px] font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {(() => {
+                                    const t = totals.total || 0;
+                                    const pct = t > 0 ? 100 : 0;
+                                    return `${pct.toFixed(2)}%`;
+                                  })()}
+                                </th>
+                              </>
+                            );
+                          })()}
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeView === "reintentos" ? (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
             <ReporteReintentos
               startDate={startDate}
