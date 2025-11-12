@@ -33,11 +33,25 @@ export async function GET(request: NextRequest) {
 
     const json = await resp.json();
     const data = Array.isArray(json?.data) ? json.data : [];
+    
+    // Normalizar campos del backend
+    const normalized = data.map((item: Record<string, unknown>) => ({
+      id: item.id ?? null,
+      nombre_preferido: item.nombre_preferido ?? null,
+      sucursal_venta: item.sucursal_venta ?? null,
+      asesor_venta: item.asesor_venta ?? null,
+      url_imagen_frontal: item.url_imagen_frontal ?? null,
+      url_imagen_trasera: item.url_imagen_trasera ?? null,
+      url_imagen_selfie: item.url_imagen_selfie ?? null,
+      id_contacto: item.id_contacto ?? null,
+      tuvo_conflicto: item.tuvo_conflicto ?? false,
+    }));
+    
     return NextResponse.json({
       success: true,
       message: json?.message ?? "OK",
-      data,
-      total: data.length,
+      data: normalized,
+      total: normalized.length,
     });
   } catch (error) {
     console.error("Error en proxy afiliaciones-fotos:", error);

@@ -200,6 +200,7 @@ export default function Home() {
     asesor_venta: string | null;
     url_imagen_frontal: string | null;
     url_imagen_trasera: string | null;
+    url_imagen_selfie: string | null;
     id_contacto: number | null;
     tuvo_conflicto: boolean;
   };
@@ -1395,6 +1396,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const data = Array.isArray(json?.data) ? json.data : [];
+      console.log("Datos de fotos recibidos:", data[0]); // Debug
       const mapped: FotoItem[] = (data as Partial<FotoItem>[]).map((r) => ({
         id: (r?.id as number) ?? String(r?.id ?? ""),
         nombre_preferido: (r?.nombre_preferido as string) ?? null,
@@ -1402,9 +1404,11 @@ export default function Home() {
         asesor_venta: (r?.asesor_venta as string) ?? null,
         url_imagen_frontal: (r?.url_imagen_frontal as string) ?? null,
         url_imagen_trasera: (r?.url_imagen_trasera as string) ?? null,
+        url_imagen_selfie: (r?.url_imagen_selfie as string) ?? null,
         id_contacto: (r?.id_contacto as number) ?? null,
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
       }));
+      console.log("Mapped fotos:", mapped[0]); // Debug
       setFotosItems(mapped);
     } catch (e) {
       setFotosItems([]);
@@ -3575,7 +3579,7 @@ export default function Home() {
                           className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
                         >
                           <div className="flex gap-1 bg-gray-50 dark:bg-gray-700 p-1">
-                            <div className="w-1/2 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
                               {f.url_imagen_frontal ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -3594,7 +3598,7 @@ export default function Home() {
                                 </span>
                               )}
                             </div>
-                            <div className="w-1/2 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
                               {f.url_imagen_trasera ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -3610,6 +3614,25 @@ export default function Home() {
                               ) : (
                                 <span className="text-xs text-gray-400">
                                   Sin trasera
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
+                              {f.url_imagen_selfie ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={f.url_imagen_selfie}
+                                  alt="Selfie"
+                                  className="object-cover w-full h-full cursor-zoom-in"
+                                  onClick={() =>
+                                    setImagePreviewUrl(
+                                      f.url_imagen_selfie as string
+                                    )
+                                  }
+                                />
+                              ) : (
+                                <span className="text-xs text-gray-400">
+                                  Sin selfie
                                 </span>
                               )}
                             </div>
