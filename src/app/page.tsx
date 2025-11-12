@@ -197,6 +197,8 @@ export default function Home() {
     asesor_venta: string | null;
     url_imagen_frontal: string | null;
     url_imagen_trasera: string | null;
+    id_contacto: number | null;
+    tuvo_conflicto: boolean;
   };
   const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
   const [fotosIsLoading, setFotosIsLoading] = useState<boolean>(false);
@@ -1352,6 +1354,8 @@ export default function Home() {
         asesor_venta: (r?.asesor_venta as string) ?? null,
         url_imagen_frontal: (r?.url_imagen_frontal as string) ?? null,
         url_imagen_trasera: (r?.url_imagen_trasera as string) ?? null,
+        id_contacto: (r?.id_contacto as number) ?? null,
+        tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
       }));
       setFotosItems(mapped);
     } catch (e) {
@@ -3426,6 +3430,34 @@ export default function Home() {
                             <div className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
                               <span className="font-medium">Asesor:</span>{" "}
                               {f.asesor_venta || "—"}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <span
+                                className={[
+                                  "inline-flex items-center rounded-full border px-2.5 py-0.5",
+                                  "text-[10px] sm:text-xs font-semibold",
+                                  f.id_contacto != null
+                                    ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700"
+                                    : "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-700",
+                                ].join(" ")}
+                              >
+                                {f.id_contacto != null
+                                  ? `AFILIADO (${f.id_contacto})`
+                                  : "SIN AFILIARSE"}
+                              </span>
+                              <span
+                                className={[
+                                  "inline-flex items-center rounded-full border px-2.5 py-0.5",
+                                  "text-[10px] sm:text-xs font-semibold",
+                                  f.tuvo_conflicto
+                                    ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700"
+                                    : "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700",
+                                ].join(" ")}
+                              >
+                                {f.tuvo_conflicto
+                                  ? "CON-CONFLICTO"
+                                  : "SIN-CONFLICTO"}
+                              </span>
                             </div>
                           </div>
                         </div>
