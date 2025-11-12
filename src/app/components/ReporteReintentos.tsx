@@ -23,12 +23,14 @@ interface Props {
   startDate: string;
   endDate: string;
   refreshKey?: number;
+  filterUserIds?: Array<string | number>;
 }
 
 export default function ReporteReintentos({
   startDate,
   endDate,
   refreshKey = 0,
+  filterUserIds = [],
 }: Props) {
   const [rows, setRows] = useState<Reintento[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -408,6 +410,17 @@ export default function ReporteReintentos({
   const visibleRows = useMemo(() => {
     let base = rows;
 
+    // Filtro por lista de usuarios (si se provee desde la vista principal)
+    if (filterUserIds && filterUserIds.length > 0) {
+      const set = new Set(filterUserIds.map((v) => String(v)));
+      base = base.filter(
+        (r) =>
+          r.id_usuario_digital != null &&
+          String(r.id_usuario_digital) &&
+          set.has(String(r.id_usuario_digital))
+      );
+    }
+
     if (filtroTipoError) {
       base = base.filter((r) => {
         const fromApi = (r.tipo_motivo_reintento || "").toString();
@@ -450,6 +463,7 @@ export default function ReporteReintentos({
     soloFrecuentes,
     countsByUserId,
     errorTipoMap,
+    filterUserIds,
   ]);
 
   // Reset de paginación/lazy cuando cambian los datos visibles

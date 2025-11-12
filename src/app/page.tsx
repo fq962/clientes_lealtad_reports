@@ -57,6 +57,9 @@ export default function Home() {
   const [showAll, setShowAll] = useState(false);
   // Forzar refetch de reintentos aunque las fechas no cambien
   const [reintentosRefreshKey, setReintentosRefreshKey] = useState(0);
+  const [reintentosUserIdsFilter, setReintentosUserIdsFilter] = useState<
+    string[]
+  >([]);
 
   // Búsqueda
   const [searchQuery, setSearchQuery] = useState("");
@@ -204,6 +207,9 @@ export default function Home() {
   const [fotosIsLoading, setFotosIsLoading] = useState<boolean>(false);
   const [fotosError, setFotosError] = useState<string | null>(null);
   const [filtroSucursalFotos, setFiltroSucursalFotos] = useState<string>("");
+  const [filtroAfiliacionFotos, setFiltroAfiliacionFotos] =
+    useState<string>(""); // "" | "AFILIADO" | "NO-AFILIADO"
+  const [filtroConflictoFotos, setFiltroConflictoFotos] = useState<string>(""); // "" | "CON-CONFLICTO" | "SIN-CONFLICTO"
   const [fotosSearch, setFotosSearch] = useState<string>("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const sucursalesFotos = useMemo(() => {
@@ -216,7 +222,7 @@ export default function Home() {
   }, [fotosItems]);
   const fotosFiltrados = useMemo(() => {
     // Filtro por sucursal
-    const base =
+    let base =
       filtroSucursalFotos === ""
         ? fotosItems
         : filtroSucursalFotos === "__NULL__"
@@ -224,6 +230,21 @@ export default function Home() {
         : fotosItems.filter(
             (r) => (r.sucursal_venta || "").toString() === filtroSucursalFotos
           );
+
+    // Filtro por afiliación
+    if (filtroAfiliacionFotos === "AFILIADO") {
+      base = base.filter((r) => r.id_contacto != null);
+    } else if (filtroAfiliacionFotos === "NO-AFILIADO") {
+      base = base.filter((r) => r.id_contacto == null);
+    }
+
+    // Filtro por conflicto
+    if (filtroConflictoFotos === "CON-CONFLICTO") {
+      base = base.filter((r) => r.tuvo_conflicto === true);
+    } else if (filtroConflictoFotos === "SIN-CONFLICTO") {
+      base = base.filter((r) => r.tuvo_conflicto === false);
+    }
+
     // Filtro por texto (nombre, asesor, sucursal)
     const q = fotosSearch.trim().toLowerCase();
     if (!q) return base;
@@ -233,7 +254,13 @@ export default function Home() {
       const suc = (r.sucursal_venta || "").toLowerCase();
       return nombre.includes(q) || asesor.includes(q) || suc.includes(q);
     });
-  }, [fotosItems, filtroSucursalFotos, fotosSearch]);
+  }, [
+    fotosItems,
+    filtroSucursalFotos,
+    filtroAfiliacionFotos,
+    filtroConflictoFotos,
+    fotosSearch,
+  ]);
   // Filtros de fecha para Tiempo Afiliación X Intento
   const [fechaInicioTiempo, setFechaInicioTiempo] = useState<string>(
     getTodayDate()
@@ -666,17 +693,29 @@ export default function Home() {
           if (bucket === "null") return vNum === null || Number.isNaN(vNum);
           return vNum === bucket;
         });
-        setIntentosDetail(subset);
-        setIntentosDetailTitle(
-          `Detalle ${
-            bucket === "null" ? "null" : bucket
-          } intento(s) — ${fecha} (${subset.length})`
-        );
-        const keys =
-          subset.length > 0
-            ? Object.keys(subset[0] as Record<string, unknown>)
-            : [];
-        setIntentosDetailKeys(keys);
+        // Extraer los id_usuario_digital para filtrar el reporte de reintentos
+        const ids = Array.from(
+          new Set(
+            subset
+              .map((it) => {
+                const rec = it as Record<string, unknown>;
+                const raw = rec["id_usuario_digital"];
+                return raw == null ? null : String(raw as number | string);
+              })
+              .filter((v) => v && String(v).trim() !== "")
+          )
+        ) as string[];
+        setReintentosUserIdsFilter(ids);
+        // Alinear el rango de fechas del reporte de Reintentos con la fecha seleccionada
+        setStartDate(fecha);
+        setEndDate(fecha);
+        // Cambiar a vista de reintentos y forzar refresh para asegurar recarga
+        setActiveView("reintentos");
+        setReintentosRefreshKey((k) => k + 1);
+        // Limpiar cualquier detalle previo
+        setIntentosDetail(null);
+        setIntentosDetailTitle("");
+        setIntentosDetailKeys([]);
       } catch (e) {
         setIntentosDetail([]);
         setIntentosDetailTitle("Detalle");
@@ -881,6 +920,8 @@ export default function Home() {
         sucursal_venta: string | null;
         conteo_intentos: number | null;
         minutos: number | null; // tiempo_total_proceso_minutos
+        id_usuario_digital: number;
+        nombre_preferido: string | null;
       };
       const byKey = new Map<string, Normalizado>();
       for (const it of raw) {
@@ -914,6 +955,8 @@ export default function Home() {
             : typeof minRaw === "number"
             ? minRaw
             : Number(minRaw as string);
+        const nombrePreferido =
+          (r["nombre_preferido"] as string | null) ?? null;
 
         const prev = byKey.get(key);
         if (!prev) {
@@ -922,6 +965,8 @@ export default function Home() {
             sucursal_venta: suc,
             conteo_intentos: conteo,
             minutos,
+            id_usuario_digital: Number(id),
+            nombre_preferido: nombrePreferido,
           });
         } else {
           // Completar sucursal si estaba vacía y preferir bucket mayor si difiere
@@ -938,6 +983,9 @@ export default function Home() {
           }
           if (prev.minutos == null && minutos != null) {
             prev.minutos = minutos;
+          }
+          if (!prev.nombre_preferido && nombrePreferido) {
+            prev.nombre_preferido = nombrePreferido;
           }
         }
       }
@@ -2225,7 +2273,25 @@ export default function Home() {
                                             key={`c-${idx}-${b}`}
                                             className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700"
                                           >
-                                            {v}
+                                            {v > 0 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  openIntentosDetail(
+                                                    r.fecha,
+                                                    b as 1 | 2 | 3 | 4 | 6
+                                                  )
+                                                }
+                                                className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                                title={`Ver detalle de ${v} registros (${b} intento${
+                                                  b === 1 ? "" : "s"
+                                                })`}
+                                              >
+                                                {v}
+                                              </button>
+                                            ) : (
+                                              v
+                                            )}
                                           </td>
                                           <td
                                             key={`cp-${idx}-${b}`}
@@ -2239,7 +2305,23 @@ export default function Home() {
                                     {intentosDynamic.hasNull && (
                                       <>
                                         <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                          {r.nullCount}
+                                          {r.nullCount > 0 ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                openIntentosDetail(
+                                                  r.fecha,
+                                                  "null"
+                                                )
+                                              }
+                                              className="text-blue-600 dark:text-blue-400 underline hover:no-underline"
+                                              title={`Ver detalle de ${r.nullCount} registros (intentos null)`}
+                                            >
+                                              {r.nullCount}
+                                            </button>
+                                          ) : (
+                                            r.nullCount
+                                          )}
                                         </td>
                                         <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                           {(() => {
@@ -2594,6 +2676,87 @@ export default function Home() {
                             </tr>
                           </tfoot>
                         </table>
+                        {intentosDetail && (
+                          <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                {intentosDetailTitle}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIntentosDetail(null);
+                                  setIntentosDetailTitle("");
+                                  setIntentosDetailKeys([]);
+                                }}
+                                className="px-3 py-1.5 text-xs rounded-md bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+                              >
+                                Cerrar detalle
+                              </button>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto">
+                                <thead className="bg-gray-50 dark:bg-gray-700">
+                                  <tr>
+                                    {intentosDetailKeys.length > 0 ? (
+                                      intentosDetailKeys.map((k) => (
+                                        <th
+                                          key={k}
+                                          className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+                                        >
+                                          {k}
+                                        </th>
+                                      ))
+                                    ) : (
+                                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        (sin columnas)
+                                      </th>
+                                    )}
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                  {intentosDetail.map((it, i) => (
+                                    <tr
+                                      key={i}
+                                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                    >
+                                      {intentosDetailKeys.map((k) => (
+                                        <td
+                                          key={k}
+                                          className="px-3 py-2 text-xs align-top"
+                                        >
+                                          {(() => {
+                                            const val = (
+                                              it as Record<string, unknown>
+                                            )[k];
+                                            if (val == null) return "-";
+                                            if (typeof val === "object") {
+                                              try {
+                                                const json =
+                                                  JSON.stringify(val);
+                                                return (
+                                                  <span
+                                                    title={json}
+                                                    className="font-mono"
+                                                  >
+                                                    {json}
+                                                  </span>
+                                                );
+                                              } catch {
+                                                return String(val);
+                                              }
+                                            }
+                                            return String(val);
+                                          })()}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="shrink-0">
                         <button
@@ -3292,7 +3455,7 @@ export default function Home() {
                     Fotos Tienda
                   </h3>
 
-                  <div className="mt-3 flex items-end gap-3">
+                  <div className="mt-3 flex flex-wrap items-end gap-3">
                     <div>
                       <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
                         Sucursal
@@ -3309,6 +3472,38 @@ export default function Home() {
                             {s}
                           </option>
                         ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Afiliación
+                      </label>
+                      <select
+                        value={filtroAfiliacionFotos}
+                        onChange={(e) =>
+                          setFiltroAfiliacionFotos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todos</option>
+                        <option value="AFILIADO">AFILIADO</option>
+                        <option value="NO-AFILIADO">NO-AFILIADO</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Conflicto
+                      </label>
+                      <select
+                        value={filtroConflictoFotos}
+                        onChange={(e) =>
+                          setFiltroConflictoFotos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todos</option>
+                        <option value="CON-CONFLICTO">CON-CONFLICTO</option>
+                        <option value="SIN-CONFLICTO">SIN-CONFLICTO</option>
                       </select>
                     </div>
                     <div>
@@ -3789,6 +3984,7 @@ export default function Home() {
               startDate={startDate}
               endDate={endDate}
               refreshKey={reintentosRefreshKey}
+              filterUserIds={reintentosUserIdsFilter}
             />
           </div>
         ) : activeView === "global" ? (
