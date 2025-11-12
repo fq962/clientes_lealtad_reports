@@ -1345,7 +1345,7 @@ export default function Home() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const data = Array.isArray(json?.data) ? json.data : [];
-      const mapped: FotoItem[] = data.map((r) => ({
+      const mapped: FotoItem[] = (data as Partial<FotoItem>[]).map((r) => ({
         id: (r?.id as number) ?? String(r?.id ?? ""),
         nombre_preferido: (r?.nombre_preferido as string) ?? null,
         sucursal_venta: (r?.sucursal_venta as string) ?? null,
