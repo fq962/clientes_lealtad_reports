@@ -202,6 +202,7 @@ export default function Home() {
     url_imagen_trasera: string | null;
     url_imagen_selfie: string | null;
     id_contacto: number | null;
+    id_usuario_digital: string | null;
     tuvo_conflicto: boolean;
   };
   const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
@@ -212,6 +213,7 @@ export default function Home() {
     useState<string>(""); // "" | "AFILIADO" | "NO-AFILIADO"
   const [filtroConflictoFotos, setFiltroConflictoFotos] = useState<string>(""); // "" | "CON-CONFLICTO" | "SIN-CONFLICTO"
   const [fotosSearch, setFotosSearch] = useState<string>("");
+  const [fotosUserIdsFilter, setFotosUserIdsFilter] = useState<string[]>([]);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const sucursalesFotos = useMemo(() => {
     const set = new Set<string>();
@@ -231,6 +233,15 @@ export default function Home() {
         : fotosItems.filter(
             (r) => (r.sucursal_venta || "").toString() === filtroSucursalFotos
           );
+
+    // Filtro por id_usuario_digital (si hay un filtro activo)
+    if (fotosUserIdsFilter && fotosUserIdsFilter.length > 0) {
+      const set = new Set(fotosUserIdsFilter.map((v) => String(v)));
+      base = base.filter(
+        (r) =>
+          r.id_usuario_digital != null && set.has(String(r.id_usuario_digital))
+      );
+    }
 
     // Filtro por afiliación
     if (filtroAfiliacionFotos === "AFILIADO") {
@@ -261,6 +272,7 @@ export default function Home() {
     filtroAfiliacionFotos,
     filtroConflictoFotos,
     fotosSearch,
+    fotosUserIdsFilter,
   ]);
   // Filtros de fecha para Tiempo Afiliación X Intento
   const [fechaInicioTiempo, setFechaInicioTiempo] = useState<string>(
@@ -694,7 +706,7 @@ export default function Home() {
           if (bucket === "null") return vNum === null || Number.isNaN(vNum);
           return vNum === bucket;
         });
-        // Extraer los id_usuario_digital para filtrar el reporte de reintentos
+        // Extraer los id_usuario_digital para filtrar las fotos de tienda
         const ids = Array.from(
           new Set(
             subset
@@ -706,18 +718,19 @@ export default function Home() {
               .filter((v) => v && String(v).trim() !== "")
           )
         ) as string[];
-        setReintentosUserIdsFilter(ids);
-        // Alinear el rango de fechas del reporte de Reintentos con la fecha seleccionada
-        setStartDate(fecha);
-        setEndDate(fecha);
-        // Cambiar a vista de reintentos y forzar refresh para asegurar recarga
-        setActiveView("reintentos");
-        setReintentosRefreshKey((k) => k + 1);
+        setFotosUserIdsFilter(ids);
+        // Alinear el rango de fechas del reporte de Fotos con la fecha seleccionada
+        setFechaInicioFotos(fecha);
+        setFechaFinFotos(fecha);
+        // Cambiar a vista de métricas y tab de fotosTienda
+        setActiveView("metricas");
+        setMetricasTab("fotosTienda");
         // Limpiar cualquier detalle previo
         setIntentosDetail(null);
         setIntentosDetailTitle("");
         setIntentosDetailKeys([]);
-      } catch (e) {
+      } catch {
+        // Ignorar error y establecer estado vacío
         setIntentosDetail([]);
         setIntentosDetailTitle("Detalle");
         setIntentosDetailKeys([]);
@@ -1406,6 +1419,7 @@ export default function Home() {
         url_imagen_trasera: (r?.url_imagen_trasera as string) ?? null,
         url_imagen_selfie: (r?.url_imagen_selfie as string) ?? null,
         id_contacto: (r?.id_contacto as number) ?? null,
+        id_usuario_digital: (r?.id_usuario_digital as string) ?? null,
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
       }));
       console.log("Mapped fotos:", mapped[0]); // Debug
@@ -1479,6 +1493,18 @@ export default function Home() {
       // Forzar explícitamente el refetch de reintentos incluso si ya era hoy
       setReintentosRefreshKey((k) => k + 1);
     }
+  };
+
+  // Limpiar filtros de Fotos Tienda
+  const clearFotosFilters = () => {
+    const today = getTodayDate();
+    setFechaInicioFotos(today);
+    setFechaFinFotos(today);
+    setFiltroSucursalFotos("");
+    setFiltroAfiliacionFotos("");
+    setFiltroConflictoFotos("");
+    setFotosSearch("");
+    setFotosUserIdsFilter([]);
   };
 
   // Función para manejar el ordenamiento
@@ -3532,7 +3558,7 @@ export default function Home() {
                         className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
                       />
                     </div>
-                    <div className="pt-5">
+                    <div className="pt-5 flex gap-2">
                       <button
                         type="button"
                         onClick={loadFotosTienda}
@@ -3540,6 +3566,14 @@ export default function Home() {
                         title="Buscar fotos del rango"
                       >
                         Buscar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearFotosFilters}
+                        className="h-9 px-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 focus:ring-2 focus:ring-gray-500 transition-colors"
+                        title="Limpiar todos los filtros"
+                      >
+                        Limpiar filtro
                       </button>
                     </div>
                     <div className="ml-auto">

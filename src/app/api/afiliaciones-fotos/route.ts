@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const json = await resp.json();
     const data = Array.isArray(json?.data) ? json.data : [];
-    
+
     // Normalizar campos del backend
     const normalized = data.map((item: Record<string, unknown>) => ({
       id: item.id ?? null,
@@ -44,9 +44,10 @@ export async function GET(request: NextRequest) {
       url_imagen_trasera: item.url_imagen_trasera ?? null,
       url_imagen_selfie: item.url_imagen_selfie ?? null,
       id_contacto: item.id_contacto ?? null,
+      id_usuario_digital: item.id_usuario_digital ?? null,
       tuvo_conflicto: item.tuvo_conflicto ?? false,
     }));
-    
+
     return NextResponse.json({
       success: true,
       message: json?.message ?? "OK",
