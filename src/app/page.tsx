@@ -183,6 +183,8 @@ export default function Home() {
   // Filtro sucursal para Afiliación X Intentos
   const [filtroSucursalIntentos, setFiltroSucursalIntentos] =
     useState<string>("");
+  // Filtro sucursal para Tiempo Afiliación X Intento
+  const [filtroSucursalTiempo, setFiltroSucursalTiempo] = useState<string>("");
   // Filtros de fecha por tabla (A: principal, B: comparación)
   const [fechaInicioA, setFechaInicioA] = useState<string>(getTodayDate());
   const [fechaFinA, setFechaFinA] = useState<string>(getTodayDate());
@@ -297,7 +299,18 @@ export default function Home() {
     const byDate = new Map<string, RowAgg>();
     const bucketSet = new Set<number>();
 
-    for (const it of intentosAll) {
+    // Filtrar por sucursal
+    const filtered: ReporteGlobalItem[] =
+      filtroSucursalIntentos === ""
+        ? intentosAll
+        : filtroSucursalIntentos === "__NULL__"
+        ? intentosAll.filter((r) => !(r.sucursal_venta || "").toString().trim())
+        : intentosAll.filter(
+            (r) =>
+              (r.sucursal_venta || "").toString() === filtroSucursalIntentos
+          );
+
+    for (const it of filtered) {
       const rec = it as Record<string, unknown>;
       const fecha = String(
         (rec["fecha_creacion_date"] as string | undefined) ||
@@ -337,7 +350,7 @@ export default function Home() {
     const hasNull = rows.some((r) => r.nullCount > 0);
 
     return { buckets, rows, hasNull };
-  }, [intentosAll, fechaInicioA, fechaFinA]);
+  }, [intentosAll, fechaInicioA, fechaFinA, filtroSucursalIntentos]);
   // Dinámica de promedios de minutos por bucket (Tiempo Afiliación X Intento)
   const tiempoDynamic = useMemo(() => {
     type BucketAgg = { sum: number; count: number };
@@ -349,7 +362,17 @@ export default function Home() {
     const byDate = new Map<string, RowAgg>();
     const bucketSet = new Set<number>();
 
-    for (const it of tiempoAll) {
+    // Filtrar por sucursal
+    const filtered: ReporteGlobalItem[] =
+      filtroSucursalTiempo === ""
+        ? tiempoAll
+        : filtroSucursalTiempo === "__NULL__"
+        ? tiempoAll.filter((r) => !(r.sucursal_venta || "").toString().trim())
+        : tiempoAll.filter(
+            (r) => (r.sucursal_venta || "").toString() === filtroSucursalTiempo
+          );
+
+    for (const it of filtered) {
       const rec = it as Record<string, unknown>;
       const fecha = String(
         (rec["fecha_creacion_date"] as string | undefined) ||
@@ -410,7 +433,7 @@ export default function Home() {
     const hasNull = rows.some((r) => r.agg.nullAgg.count > 0);
 
     return { buckets, rows, hasNull };
-  }, [tiempoAll, fechaInicioTiempo, fechaFinTiempo]);
+  }, [tiempoAll, fechaInicioTiempo, fechaFinTiempo, filtroSucursalTiempo]);
   const intentosRowsFiltrados = useMemo(() => {
     if (USE_FAKE_METRICAS) return null as unknown as IntentosRow[];
     // Filtrar intentosAll por sucursal y re-agrupar
@@ -3115,13 +3138,15 @@ export default function Home() {
                         Sucursal
                       </label>
                       <select
-                        value={filtroSucursalFotos}
-                        onChange={(e) => setFiltroSucursalFotos(e.target.value)}
+                        value={filtroSucursalTiempo}
+                        onChange={(e) =>
+                          setFiltroSucursalTiempo(e.target.value)
+                        }
                         className="h-10 w-64 px-3 text-base border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
                       >
                         <option value="">Todas</option>
                         <option value="__NULL__">Sin Sucursal</option>
-                        {sucursalesFotos.map((s) => (
+                        {sucursalesIntentos.map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
