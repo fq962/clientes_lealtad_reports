@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import type {
   UsuarioDigitalUI,
   UsuarioDigitalFromAPI,
@@ -303,7 +309,7 @@ export default function Home() {
   // Agregar datos por fecha para Afiliaciones X Intentos Nuevos
   type AfiliacionesNuevosAgg = {
     fecha: string;
-    unIntento: number;
+    intentosCounts: Record<number, number>; // { 1: 5, 2: 3, 3: 1, ... }
     correccionesFrontal: number;
     correccionesTrasera: number;
     correccionesSelfie: number;
@@ -312,6 +318,17 @@ export default function Home() {
     usuariosTrasera: number;
     usuariosSelfie: number;
   };
+
+  // Obtener todos los valores únicos de intentos
+  const intentosUnicos = useMemo(() => {
+    const intentos = new Set<number>();
+    for (const item of afiliacionesNuevosItems) {
+      if (item.cantidadIntentos) {
+        intentos.add(item.cantidadIntentos);
+      }
+    }
+    return Array.from(intentos).sort((a, b) => a - b);
+  }, [afiliacionesNuevosItems]);
 
   const afiliacionesNuevosAgrupado = useMemo(() => {
     const byDate = new Map<string, AfiliacionesNuevosAgg>();
@@ -322,7 +339,7 @@ export default function Home() {
       if (!byDate.has(fecha)) {
         byDate.set(fecha, {
           fecha,
-          unIntento: 0,
+          intentosCounts: {},
           correccionesFrontal: 0,
           correccionesTrasera: 0,
           correccionesSelfie: 0,
@@ -336,10 +353,10 @@ export default function Home() {
       const row = byDate.get(fecha)!;
       row.total += 1;
 
-      // Si cantidadIntentos es 1, contar como "1 Intento"
-      if (item.cantidadIntentos === 1) {
-        row.unIntento += 1;
-      }
+      // Contar usuarios por cantidad de intentos
+      const intentosKey = item.cantidadIntentos || 0;
+      row.intentosCounts[intentosKey] =
+        (row.intentosCounts[intentosKey] || 0) + 1;
 
       // Sumar la cantidad de correcciones
       row.correccionesFrontal += item.cantCorreccionFrontal;
@@ -4283,12 +4300,16 @@ export default function Home() {
                             <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                               Fecha
                             </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              1 Intento
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              % 1 Intento
-                            </th>
+                            {intentosUnicos.map((intento) => (
+                              <React.Fragment key={intento}>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {intento} Intento{intento !== 1 ? "s" : ""}
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % {intento} Intento{intento !== 1 ? "s" : ""}
+                                </th>
+                              </React.Fragment>
+                            ))}
                             <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                               Correcciones Frontal
                             </th>
@@ -4324,25 +4345,23 @@ export default function Home() {
                               <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
                                 {row.fecha}
                               </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {row.unIntento}
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                {(() => {
-                                  const unIntentoSum =
-                                    afiliacionesNuevosAgrupado.reduce(
-                                      (sum, r) => sum + r.unIntento,
-                                      0
-                                    );
-                                  return unIntentoSum > 0
-                                    ? (
-                                        (row.unIntento / unIntentoSum) *
-                                        100
-                                      ).toFixed(1)
+                              {intentosUnicos.map((intento) => {
+                                const count = row.intentosCounts[intento] || 0;
+                                const percentage =
+                                  row.total > 0
+                                    ? ((count / row.total) * 100).toFixed(1)
                                     : "0";
-                                })()}
-                                %
-                              </td>
+                                return (
+                                  <React.Fragment key={intento}>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {count}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                      {percentage}%
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              })}
                               <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                 {row.correccionesFrontal}
                               </td>
@@ -4403,33 +4422,36 @@ export default function Home() {
                             <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
                               SUMA TOTAL
                             </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              {afiliacionesNuevosAgrupado.reduce(
-                                (sum, row) => sum + row.unIntento,
-                                0
-                              )}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                              {(() => {
-                                const totalUsuarios =
-                                  afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.total,
-                                    0
-                                  );
-                                const usuariosFrontal =
-                                  afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.usuariosFrontal,
-                                    0
-                                  );
-                                return totalUsuarios > 0
+                            {intentosUnicos.map((intento) => {
+                              const totalCount =
+                                afiliacionesNuevosAgrupado.reduce(
+                                  (sum, row) =>
+                                    sum + (row.intentosCounts[intento] || 0),
+                                  0
+                                );
+                              const totalUsuarios =
+                                afiliacionesNuevosAgrupado.reduce(
+                                  (sum, row) => sum + row.total,
+                                  0
+                                );
+                              const percentage =
+                                totalUsuarios > 0
                                   ? (
-                                      (usuariosFrontal / totalUsuarios) *
+                                      (totalCount / totalUsuarios) *
                                       100
                                     ).toFixed(1)
                                   : "0";
-                              })()}
-                              %
-                            </th>
+                              return (
+                                <React.Fragment key={intento}>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {totalCount}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                    {percentage}%
+                                  </th>
+                                </React.Fragment>
+                              );
+                            })}
                             <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                               {afiliacionesNuevosAgrupado.reduce(
                                 (sum, row) => sum + row.correccionesFrontal,
