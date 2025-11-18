@@ -32,21 +32,19 @@ export async function GET(request: NextRequest) {
     }
 
     const json = await resp.json();
-    const data = Array.isArray(json?.data) ? json.data : [];
+    const rawData = Array.isArray(json?.data) ? json.data : [];
 
-    // Normalizar campos del backend
-    const normalized = data.map((item: Record<string, unknown>) => ({
-      id: item.id ?? null,
-      nombre_preferido: item.nombre_preferido ?? null,
-      sucursal_venta: item.sucursal_venta ?? null,
-      asesor_venta: item.asesor_venta ?? null,
-      url_imagen_frontal: item.url_imagen_frontal ?? null,
-      url_imagen_trasera: item.url_imagen_trasera ?? null,
-      url_imagen_selfie: item.url_imagen_selfie ?? null,
-      id_contacto: item.id_contacto ?? null,
-      id_usuario_digital: item.id_usuario_digital ?? null,
-      tuvo_conflicto: item.tuvo_conflicto ?? false,
-    }));
+    // Ordenar por id_usuario_digital de menor a mayor
+    const data = rawData.sort(
+      (a: Record<string, unknown>, b: Record<string, unknown>) => {
+        const idA = Number(a.id_usuario_digital) || 0;
+        const idB = Number(b.id_usuario_digital) || 0;
+        return idA - idB;
+      }
+    );
+
+    // Retornar los datos tal como vienen del API
+    const normalized = data;
 
     return NextResponse.json({
       success: true,

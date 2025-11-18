@@ -202,6 +202,18 @@ export default function Home() {
     getTodayDate()
   );
   const [fechaFinFotos, setFechaFinFotos] = useState<string>(getTodayDate());
+  type ImagenIntento = {
+    idTipoImagen: number | null;
+    fechaRegistro: string | null;
+    imagen: string | null;
+    data: string | null;
+  };
+
+  type Intento = {
+    idIntento: string | null;
+    imagenes: ImagenIntento[] | null;
+  };
+
   type FotoItem = {
     id: number | string;
     nombre_preferido: string | null;
@@ -213,6 +225,7 @@ export default function Home() {
     id_contacto: number | null;
     id_usuario_digital: string | null;
     tuvo_conflicto: boolean;
+    intentos: Intento[] | null;
   };
   const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
   const [fotosIsLoading, setFotosIsLoading] = useState<boolean>(false);
@@ -233,13 +246,18 @@ export default function Home() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [fotosItems]);
   const fotosFiltrados = useMemo(() => {
+    // Filtro inicial: solo usuarios que tienen intentos (no null)
+    let base = fotosItems.filter(
+      (r) => r.intentos !== null && r.intentos.length > 0
+    );
+
     // Filtro por sucursal
-    let base =
+    base =
       filtroSucursalFotos === ""
-        ? fotosItems
+        ? base
         : filtroSucursalFotos === "__NULL__"
-        ? fotosItems.filter((r) => !(r.sucursal_venta || "").toString().trim())
-        : fotosItems.filter(
+        ? base.filter((r) => !(r.sucursal_venta || "").toString().trim())
+        : base.filter(
             (r) => (r.sucursal_venta || "").toString() === filtroSucursalFotos
           );
 
@@ -1539,7 +1557,6 @@ export default function Home() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const data = Array.isArray(json?.data) ? json.data : [];
-      console.log("Datos de fotos recibidos:", data[0]); // Debug
       const mapped: FotoItem[] = (data as Partial<FotoItem>[]).map((r) => ({
         id: (r?.id as number) ?? String(r?.id ?? ""),
         nombre_preferido: (r?.nombre_preferido as string) ?? null,
@@ -1551,8 +1568,8 @@ export default function Home() {
         id_contacto: (r?.id_contacto as number) ?? null,
         id_usuario_digital: (r?.id_usuario_digital as string) ?? null,
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
+        intentos: (r?.intentos as Intento[] | null) ?? null,
       }));
-      console.log("Mapped fotos:", mapped[0]); // Debug
       setFotosItems(mapped);
     } catch (e) {
       setFotosItems([]);
@@ -3789,130 +3806,180 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {fotosError && (
-                    <div className="mt-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                      {fotosError}
-                    </div>
-                  )}
-
+                  {/* Área de visualización de fotos */}
                   {fotosIsLoading ? (
-                    <div className="mt-6 flex items-center justify-center text-gray-600 dark:text-gray-300">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
-                      Cargando fotos...
+                    <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
+                      <p className="text-lg">Cargando fotos...</p>
                     </div>
                   ) : fotosFiltrados.length === 0 ? (
-                    <div className="mt-6 text-center text-gray-500 dark:text-gray-400">
-                      Sin fotos para mostrar
+                    <div className="mt-8 text-center text-gray-500 dark:text-gray-400">
+                      <p className="text-lg">Área de visualización de fotos</p>
+                      <p className="text-sm mt-2">
+                        Aquí se mostrarán las fotos después de hacer búsquedas
+                      </p>
                     </div>
                   ) : (
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                      {fotosFiltrados.map((f) => (
-                        <div
-                          key={String(f.id)}
-                          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
-                        >
-                          <div className="flex gap-1 bg-gray-50 dark:bg-gray-700 p-1">
-                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
-                              {f.url_imagen_frontal ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={f.url_imagen_frontal}
-                                  alt="Frontal"
-                                  className="object-cover w-full h-full cursor-zoom-in"
-                                  onClick={() =>
-                                    setImagePreviewUrl(
-                                      f.url_imagen_frontal as string
-                                    )
-                                  }
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-400">
-                                  Sin frontal
-                                </span>
-                              )}
+                    <div className="mt-8">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
+                        {fotosFiltrados.map((usuario) => (
+                          <div
+                            key={String(usuario.id_usuario_digital)}
+                            className="group rounded-lg border-2 border-transparent bg-white dark:bg-gray-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-500 dark:hover:border-blue-400"
+                          >
+                            {/* Header decorativo del usuario */}
+                            <div className="bg-gradient-to-135 from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-800 px-4 py-3 relative overflow-hidden">
+                              <div className="absolute top-0 right-0 w-16 h-16 bg-white/15 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
+                              <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/10 rounded-full -ml-6 -mb-6" />
+
+                              <div className="relative z-10">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
+                                      {usuario.nombre_preferido ||
+                                        `Usuario ${usuario.id_usuario_digital}`}
+                                    </h2>
+                                    <p className="text-blue-200 text-xs mt-0.5 opacity-95 font-medium">
+                                      ID: {usuario.id_usuario_digital}
+                                    </p>
+                                  </div>
+                                  <div className="bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full whitespace-nowrap">
+                                    <span className="text-white text-xs font-bold">
+                                      {usuario.intentos?.length || 0}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Badges de información */}
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {usuario.sucursal_venta && (
+                                    <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
+                                      📍 {usuario.sucursal_venta}
+                                    </div>
+                                  )}
+                                  {usuario.asesor_venta && (
+                                    <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
+                                      👤 {usuario.asesor_venta}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
-                              {f.url_imagen_trasera ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={f.url_imagen_trasera}
-                                  alt="Trasera"
-                                  className="object-cover w-full h-full cursor-zoom-in"
-                                  onClick={() =>
-                                    setImagePreviewUrl(
-                                      f.url_imagen_trasera as string
+
+                            {/* Contenedor de intentos */}
+                            <div className="p-3">
+                              {usuario.intentos &&
+                              usuario.intentos.length > 0 ? (
+                                <div className="space-y-3">
+                                  {usuario.intentos.map(
+                                    (intento, intentoIdx) => (
+                                      <div
+                                        key={intento.idIntento || intentoIdx}
+                                        className="bg-gray-50 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 p-3 hover:shadow-md transition-shadow"
+                                      >
+                                        {/* Badge del intento */}
+                                        <div className="mb-3 flex items-center gap-2">
+                                          <div
+                                            className={`w-1.5 h-5 rounded-full ${
+                                              intentoIdx === 0
+                                                ? "bg-green-600"
+                                                : "bg-amber-600"
+                                            }`}
+                                          />
+                                          <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                            {intentoIdx === 0
+                                              ? `✨ Inicial (${intento.idIntento})`
+                                              : `🔄 Correc. ${intentoIdx} (${intento.idIntento})`}
+                                          </span>
+                                        </div>
+
+                                        {/* Grid de fotos */}
+                                        {intento.imagenes &&
+                                        Array.isArray(intento.imagenes) &&
+                                        intento.imagenes.length > 0 ? (
+                                          <div className="grid grid-cols-3 gap-2">
+                                            {intento.imagenes.map(
+                                              (imagen, imgIdx) => {
+                                                const tipoTexto: Record<
+                                                  number,
+                                                  string
+                                                > = {
+                                                  1: "Front",
+                                                  2: "Tras",
+                                                  3: "Self",
+                                                };
+                                                const tipoEmoji: Record<
+                                                  number,
+                                                  string
+                                                > = {
+                                                  1: "📷",
+                                                  2: "📸",
+                                                  3: "🤳",
+                                                };
+                                                const tipo =
+                                                  tipoTexto[
+                                                    imagen.idTipoImagen || 0
+                                                  ] || "Img";
+                                                const emoji =
+                                                  tipoEmoji[
+                                                    imagen.idTipoImagen || 0
+                                                  ] || "📷";
+
+                                                return (
+                                                  <div
+                                                    key={imgIdx}
+                                                    className="flex flex-col group/img"
+                                                  >
+                                                    <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                      <span>{emoji}</span>
+                                                      <span className="hidden sm:inline">
+                                                        {tipo}
+                                                      </span>
+                                                    </div>
+                                                    <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                      {imagen.imagen ? (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
+                                                          src={imagen.imagen}
+                                                          alt={tipo}
+                                                          className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                          onClick={() =>
+                                                            setImagePreviewUrl(
+                                                              imagen.imagen as string
+                                                            )
+                                                          }
+                                                        />
+                                                      ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
+                                                          —
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              }
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <div className="text-center py-2 text-gray-600 dark:text-gray-400 text-xs font-medium">
+                                            ⚠️ Sin fotos
+                                          </div>
+                                        )}
+                                      </div>
                                     )
-                                  }
-                                />
+                                  )}
+                                </div>
                               ) : (
-                                <span className="text-xs text-gray-400">
-                                  Sin trasera
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex-1 aspect-[4/3] bg-gray-100 dark:bg-gray-900 flex items-center justify-center overflow-hidden">
-                              {f.url_imagen_selfie ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={f.url_imagen_selfie}
-                                  alt="Selfie"
-                                  className="object-cover w-full h-full cursor-zoom-in"
-                                  onClick={() =>
-                                    setImagePreviewUrl(
-                                      f.url_imagen_selfie as string
-                                    )
-                                  }
-                                />
-                              ) : (
-                                <span className="text-xs text-gray-400">
-                                  Sin selfie
-                                </span>
+                                <div className="text-center py-4 text-gray-600 dark:text-gray-400">
+                                  <p className="text-lg">📭</p>
+                                  <p className="text-xs font-medium mt-1">
+                                    Sin intentos
+                                  </p>
+                                </div>
                               )}
                             </div>
                           </div>
-                          <div className="p-3">
-                            <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {f.nombre_preferido || "Sin nombre"}
-                            </div>
-                            <div className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                              <span className="font-medium">Sucursal:</span>{" "}
-                              {f.sucursal_venta || "—"}
-                            </div>
-                            <div className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">
-                              <span className="font-medium">Asesor:</span>{" "}
-                              {f.asesor_venta || "—"}
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <span
-                                className={[
-                                  "inline-flex items-center rounded-full border px-2.5 py-0.5",
-                                  "text-[10px] sm:text-xs font-semibold",
-                                  f.id_contacto != null
-                                    ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700"
-                                    : "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-700",
-                                ].join(" ")}
-                              >
-                                {f.id_contacto != null
-                                  ? `AFILIADO (${f.id_contacto})`
-                                  : "SIN AFILIARSE"}
-                              </span>
-                              <span
-                                className={[
-                                  "inline-flex items-center rounded-full border px-2.5 py-0.5",
-                                  "text-[10px] sm:text-xs font-semibold",
-                                  f.tuvo_conflicto
-                                    ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700"
-                                    : "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-700",
-                                ].join(" ")}
-                              >
-                                {f.tuvo_conflicto
-                                  ? "CON-CONFLICTO"
-                                  : "SIN-CONFLICTO"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
