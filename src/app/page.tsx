@@ -77,6 +77,7 @@ export default function Home() {
     | "tiempoAfiliacionIntento"
     | "proveedores"
     | "fotosTienda"
+    | "afiliacionesNuevos"
   >("afiliacionIntentos");
   const USE_FAKE_METRICAS = false;
   const [showCompareIntentos, setShowCompareIntentos] = useState(false);
@@ -276,6 +277,95 @@ export default function Home() {
     fotosSearch,
     fotosUserIdsFilter,
   ]);
+
+  // Estados para Afiliaciones X Intentos Nuevos
+  type AfiliacionNuevaItem = {
+    idUsuarioDigital: number;
+    fecha_creacion: string;
+    cantidadIntentos: number;
+    cantCorreccionFrontal: number;
+    cantCorreccionTrasera: number;
+    cantCorreccionSelfie: number;
+  };
+  const [afiliacionesNuevosItems, setAfiliacionesNuevosItems] = useState<
+    AfiliacionNuevaItem[]
+  >([]);
+  const [afiliacionesNuevosIsLoading, setAfiliacionesNuevosIsLoading] =
+    useState<boolean>(false);
+  const [afiliacionesNuevosError, setAfiliacionesNuevosError] = useState<
+    string | null
+  >(null);
+  const [fechaInicioAfiliacionesNuevos, setFechaInicioAfiliacionesNuevos] =
+    useState<string>(getTodayDate());
+  const [fechaFinAfiliacionesNuevos, setFechaFinAfiliacionesNuevos] =
+    useState<string>(getTodayDate());
+
+  // Agregar datos por fecha para Afiliaciones X Intentos Nuevos
+  type AfiliacionesNuevosAgg = {
+    fecha: string;
+    unIntento: number;
+    correccionesFrontal: number;
+    correccionesTrasera: number;
+    correccionesSelfie: number;
+    total: number;
+    usuariosFrontal: number;
+    usuariosTrasera: number;
+    usuariosSelfie: number;
+  };
+
+  const afiliacionesNuevosAgrupado = useMemo(() => {
+    const byDate = new Map<string, AfiliacionesNuevosAgg>();
+
+    for (const item of afiliacionesNuevosItems) {
+      const fecha = item.fecha_creacion || "desconocida";
+
+      if (!byDate.has(fecha)) {
+        byDate.set(fecha, {
+          fecha,
+          unIntento: 0,
+          correccionesFrontal: 0,
+          correccionesTrasera: 0,
+          correccionesSelfie: 0,
+          total: 0,
+          usuariosFrontal: 0,
+          usuariosTrasera: 0,
+          usuariosSelfie: 0,
+        });
+      }
+
+      const row = byDate.get(fecha)!;
+      row.total += 1;
+
+      // Si cantidadIntentos es 1, contar como "1 Intento"
+      if (item.cantidadIntentos === 1) {
+        row.unIntento += 1;
+      }
+
+      // Sumar la cantidad de correcciones
+      row.correccionesFrontal += item.cantCorreccionFrontal;
+      row.correccionesTrasera += item.cantCorreccionTrasera;
+      row.correccionesSelfie += item.cantCorreccionSelfie;
+
+      // Contar usuarios que tienen correcciones (para el porcentaje)
+      if (item.cantCorreccionFrontal > 0) {
+        row.usuariosFrontal += 1;
+      }
+      if (item.cantCorreccionTrasera > 0) {
+        row.usuariosTrasera += 1;
+      }
+      if (item.cantCorreccionSelfie > 0) {
+        row.usuariosSelfie += 1;
+      }
+    }
+
+    // Ordenar por fecha descendente
+    const sorted = Array.from(byDate.values()).sort((a, b) =>
+      b.fecha.localeCompare(a.fecha)
+    );
+
+    return sorted;
+  }, [afiliacionesNuevosItems]);
+
   // Filtros de fecha para Tiempo Afiliación X Intento
   const [fechaInicioTiempo, setFechaInicioTiempo] = useState<string>(
     getTodayDate()
@@ -1469,6 +1559,61 @@ export default function Home() {
     loadFotosTienda,
   ]);
 
+  // Cargar datos para Afiliaciones X Intentos Nuevos
+  const loadAfiliacionesNuevos = useCallback(async () => {
+    try {
+      setAfiliacionesNuevosIsLoading(true);
+      setAfiliacionesNuevosError(null);
+      const params = new URLSearchParams();
+      if (fechaInicioAfiliacionesNuevos)
+        params.set("fechaInicio", fechaInicioAfiliacionesNuevos);
+      if (fechaFinAfiliacionesNuevos)
+        params.set("fechaFin", fechaFinAfiliacionesNuevos);
+      const resp = await fetch(
+        `/api/metricas-intentos-nuevo?${params.toString()}`,
+        {
+          cache: "no-store",
+        }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+
+      const mapped: AfiliacionNuevaItem[] = (
+        data as Partial<AfiliacionNuevaItem>[]
+      ).map((r) => ({
+        idUsuarioDigital: (r?.idUsuarioDigital as number) ?? 0,
+        fecha_creacion: (r?.fecha_creacion as string) ?? "",
+        cantidadIntentos: (r?.cantidadIntentos as number) ?? 0,
+        cantCorreccionFrontal: (r?.cantCorreccionFrontal as number) ?? 0,
+        cantCorreccionTrasera: (r?.cantCorreccionTrasera as number) ?? 0,
+        cantCorreccionSelfie: (r?.cantCorreccionSelfie as number) ?? 0,
+      }));
+      setAfiliacionesNuevosItems(mapped);
+    } catch (e) {
+      setAfiliacionesNuevosItems([]);
+      setAfiliacionesNuevosError(
+        "No se pudieron cargar las afiliaciones nuevas"
+      );
+    } finally {
+      setAfiliacionesNuevosIsLoading(false);
+    }
+  }, [fechaInicioAfiliacionesNuevos, fechaFinAfiliacionesNuevos]);
+
+  useEffect(() => {
+    if (USE_FAKE_METRICAS) return;
+    if (activeView === "metricas" && metricasTab === "afiliacionesNuevos") {
+      loadAfiliacionesNuevos();
+    }
+  }, [
+    USE_FAKE_METRICAS,
+    activeView,
+    metricasTab,
+    fechaInicioAfiliacionesNuevos,
+    fechaFinAfiliacionesNuevos,
+    loadAfiliacionesNuevos,
+  ]);
+
   // Cerrar vista ampliada con Escape
   useEffect(() => {
     if (!imagePreviewUrl) return;
@@ -2160,6 +2305,18 @@ export default function Home() {
                     title="Fotos Tienda"
                   >
                     Fotos Tienda
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("afiliacionesNuevos")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "afiliacionesNuevos"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Afiliaciones X Intentos Nuevos"
+                  >
+                    Afiliaciones X Intentos Nuevos
                   </button>
                 </div>
               </div>
@@ -4056,6 +4213,297 @@ export default function Home() {
                       </tfoot>
                     </table>
                   </div>
+                </div>
+              )}
+              {metricasTab === "afiliacionesNuevos" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Afiliaciones X Intentos Nuevos
+                  </h3>
+
+                  <div className="mt-3 flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaInicioAfiliacionesNuevos}
+                        onChange={(e) =>
+                          setFechaInicioAfiliacionesNuevos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaFinAfiliacionesNuevos}
+                        onChange={(e) =>
+                          setFechaFinAfiliacionesNuevos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <button
+                        type="button"
+                        onClick={loadAfiliacionesNuevos}
+                        className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title="Buscar afiliaciones nuevas"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                  </div>
+
+                  {afiliacionesNuevosError && (
+                    <div className="mt-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                      {afiliacionesNuevosError}
+                    </div>
+                  )}
+
+                  {afiliacionesNuevosIsLoading ? (
+                    <div className="mt-6 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                      Cargando afiliaciones...
+                    </div>
+                  ) : afiliacionesNuevosAgrupado.length === 0 ? (
+                    <div className="mt-6 text-center text-gray-500 dark:text-gray-400">
+                      Sin afiliaciones para mostrar
+                    </div>
+                  ) : (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                        <thead className="bg-[#6885a7]">
+                          <tr>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Fecha
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              1 Intento
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              % 1 Intento
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Correcciones Frontal
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              % Frontal
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Correcciones Trasera
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              % Trasera
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Correcciones Selfie
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              % Selfie
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              Suma Total
+                            </th>
+                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              % del Total General
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                          {afiliacionesNuevosAgrupado.map((row, idx) => (
+                            <tr
+                              key={idx}
+                              className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                            >
+                              <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                {row.fecha}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {row.unIntento}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                {(() => {
+                                  const unIntentoSum =
+                                    afiliacionesNuevosAgrupado.reduce(
+                                      (sum, r) => sum + r.unIntento,
+                                      0
+                                    );
+                                  return unIntentoSum > 0
+                                    ? (
+                                        (row.unIntento / unIntentoSum) *
+                                        100
+                                      ).toFixed(1)
+                                    : "0";
+                                })()}
+                                %
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {row.correccionesFrontal}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                {row.total > 0
+                                  ? (
+                                      (row.usuariosFrontal / row.total) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0"}
+                                %
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {row.correccionesTrasera}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                {row.total > 0
+                                  ? (
+                                      (row.usuariosTrasera / row.total) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0"}
+                                %
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {row.correccionesSelfie}
+                              </td>
+                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                {row.total > 0
+                                  ? (
+                                      (row.usuariosSelfie / row.total) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0"}
+                                %
+                              </td>
+                              <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                {row.total}
+                              </td>
+                              <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                                {(() => {
+                                  const totalSum =
+                                    afiliacionesNuevosAgrupado.reduce(
+                                      (sum, r) => sum + r.total,
+                                      0
+                                    );
+                                  return totalSum > 0
+                                    ? ((row.total / totalSum) * 100).toFixed(1)
+                                    : "0";
+                                })()}
+                                %
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-gray-50 dark:bg-gray-700">
+                          <tr>
+                            <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                              SUMA TOTAL
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              {afiliacionesNuevosAgrupado.reduce(
+                                (sum, row) => sum + row.unIntento,
+                                0
+                              )}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                              {(() => {
+                                const totalUsuarios =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.total,
+                                    0
+                                  );
+                                const usuariosFrontal =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.usuariosFrontal,
+                                    0
+                                  );
+                                return totalUsuarios > 0
+                                  ? (
+                                      (usuariosFrontal / totalUsuarios) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0";
+                              })()}
+                              %
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              {afiliacionesNuevosAgrupado.reduce(
+                                (sum, row) => sum + row.correccionesFrontal,
+                                0
+                              )}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                              {(() => {
+                                const totalUsuarios =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.total,
+                                    0
+                                  );
+                                const usuariosTrasera =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.usuariosTrasera,
+                                    0
+                                  );
+                                return totalUsuarios > 0
+                                  ? (
+                                      (usuariosTrasera / totalUsuarios) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0";
+                              })()}
+                              %
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              {afiliacionesNuevosAgrupado.reduce(
+                                (sum, row) => sum + row.correccionesTrasera,
+                                0
+                              )}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                              {(() => {
+                                const totalUsuarios =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.total,
+                                    0
+                                  );
+                                const usuariosSelfie =
+                                  afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.usuariosSelfie,
+                                    0
+                                  );
+                                return totalUsuarios > 0
+                                  ? (
+                                      (usuariosSelfie / totalUsuarios) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0";
+                              })()}
+                              %
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              {afiliacionesNuevosAgrupado.reduce(
+                                (sum, row) => sum + row.correccionesSelfie,
+                                0
+                              )}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                              {afiliacionesNuevosAgrupado.reduce(
+                                (sum, row) => sum + row.total,
+                                0
+                              )}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
+                              100%
+                            </th>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
