@@ -203,6 +203,7 @@ export default function Home() {
   );
   const [fechaFinFotos, setFechaFinFotos] = useState<string>(getTodayDate());
   type ImagenIntento = {
+    id?: number | string;
     idTipoImagen: number | null;
     fechaRegistro: string | null;
     imagen: string | null;
@@ -217,14 +218,18 @@ export default function Home() {
   type FotoItem = {
     id: number | string;
     nombre_preferido: string | null;
+    nombrePreferido?: string; // del API
     sucursal_venta: string | null;
+    sucursalVenta?: string; // del API
     asesor_venta: string | null;
+    asesorVenta?: string; // del API
     url_imagen_frontal: string | null;
     url_imagen_trasera: string | null;
     url_imagen_selfie: string | null;
     id_contacto: number | null;
     id_usuario_digital: string | null;
     tuvo_conflicto: boolean;
+    tieneConflicto: boolean;
     intentos: Intento[] | null;
   };
   const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
@@ -1565,15 +1570,16 @@ export default function Home() {
       const data = Array.isArray(json?.data) ? json.data : [];
       const mapped: FotoItem[] = (data as Partial<FotoItem>[]).map((r) => ({
         id: (r?.id as number) ?? String(r?.id ?? ""),
-        nombre_preferido: (r?.nombre_preferido as string) ?? null,
-        sucursal_venta: (r?.sucursal_venta as string) ?? null,
-        asesor_venta: (r?.asesor_venta as string) ?? null,
+        nombre_preferido: (r?.nombrePreferido as string) ?? null,
+        sucursal_venta: (r?.sucursalVenta as string) ?? null,
+        asesor_venta: (r?.asesorVenta as string) ?? null,
         url_imagen_frontal: (r?.url_imagen_frontal as string) ?? null,
         url_imagen_trasera: (r?.url_imagen_trasera as string) ?? null,
         url_imagen_selfie: (r?.url_imagen_selfie as string) ?? null,
         id_contacto: (r?.id_contacto as number) ?? null,
         id_usuario_digital: (r?.id_usuario_digital as string) ?? null,
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
+        tieneConflicto: (r?.tieneConflicto as boolean) ?? false,
         intentos: (r?.intentos as Intento[] | null) ?? null,
       }));
       setFotosItems(mapped);
@@ -3850,42 +3856,63 @@ export default function Home() {
                               key={String(usuario.id_usuario_digital)}
                               className={`group rounded-lg border-2 border-transparent ${bgColor} overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-500 dark:hover:border-blue-400`}
                             >
-                              {/* Header decorativo del usuario */}
+                              {/* Header con información del usuario */}
                               <div className="bg-gradient-to-135 from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-800 px-4 py-3 relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-16 h-16 bg-white/15 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
                                 <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/10 rounded-full -ml-6 -mb-6" />
 
                                 <div className="relative z-10">
-                                  <div className="flex items-start justify-between gap-2">
+                                  {/* Nombre Preferido */}
+                                  <div className="flex items-start justify-between gap-2 mb-2">
                                     <div className="flex-1 min-w-0">
-                                      <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
-                                        {usuario.nombre_preferido ||
-                                          `Usuario ${usuario.id_usuario_digital}`}
-                                      </h2>
-                                      <p className="text-blue-200 text-xs mt-0.5 opacity-95 font-medium">
-                                        ID: {usuario.id_usuario_digital}
+                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                        Nombre Preferido
                                       </p>
+                                      <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
+                                        {usuario.nombre_preferido || "N/A"}
+                                      </h2>
                                     </div>
-                                    <div className="bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full whitespace-nowrap">
-                                      <span className="text-white text-xs font-bold">
-                                        {usuario.intentos?.length || 0}
-                                      </span>
+                                    <div
+                                      className={`px-3 py-1 rounded-full whitespace-nowrap text-xs font-bold ${
+                                        usuario.tieneConflicto
+                                          ? "bg-red-500 text-white"
+                                          : "bg-green-500 text-white"
+                                      }`}
+                                    >
+                                      {usuario.tieneConflicto
+                                        ? "CON-CONFLICTO"
+                                        : "SIN-CONFLICTO"}
                                     </div>
                                   </div>
 
-                                  {/* Badges de información */}
-                                  <div className="flex flex-wrap gap-1.5 mt-2">
-                                    {usuario.sucursal_venta && (
-                                      <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
-                                        📍 {usuario.sucursal_venta}
-                                      </div>
-                                    )}
-                                    {usuario.asesor_venta && (
-                                      <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
-                                        👤 {usuario.asesor_venta}
-                                      </div>
-                                    )}
-                                  </div>
+                                  {/* Sucursal Venta */}
+                                  {usuario.sucursal_venta && (
+                                    <div className="mb-1.5">
+                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                        Sucursal Venta
+                                      </p>
+                                      <p className="text-sm text-white font-semibold truncate">
+                                        {usuario.sucursal_venta}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Asesor Atendio */}
+                                  {usuario.asesor_venta && (
+                                    <div className="mb-2">
+                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                        Asesor Atendio
+                                      </p>
+                                      <p className="text-sm text-white font-semibold truncate">
+                                        {usuario.asesor_venta}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* ID Usuario Digital */}
+                                  <p className="text-xs text-blue-100 opacity-75 mt-1">
+                                    ID: {usuario.id_usuario_digital}
+                                  </p>
                                 </div>
                               </div>
 
@@ -3916,73 +3943,209 @@ export default function Home() {
                                             </span>
                                           </div>
 
-                                          {/* Grid de fotos */}
+                                          {/* Grid de fotos reorganizado */}
                                           {intento.imagenes &&
                                           Array.isArray(intento.imagenes) &&
                                           intento.imagenes.length > 0 ? (
-                                            <div className="grid grid-cols-3 gap-2">
-                                              {intento.imagenes.map(
-                                                (imagen, imgIdx) => {
-                                                  const tipoTexto: Record<
-                                                    number,
-                                                    string
-                                                  > = {
-                                                    1: "Front",
-                                                    2: "Tras",
-                                                    3: "Self",
-                                                  };
-                                                  const tipoEmoji: Record<
-                                                    number,
-                                                    string
-                                                  > = {
-                                                    1: "📷",
-                                                    2: "📸",
-                                                    3: "🤳",
-                                                  };
-                                                  const tipo =
-                                                    tipoTexto[
-                                                      imagen.idTipoImagen || 0
-                                                    ] || "Img";
-                                                  const emoji =
-                                                    tipoEmoji[
-                                                      imagen.idTipoImagen || 0
-                                                    ] || "📷";
+                                            (() => {
+                                              // Agrupar imágenes por tipo ordenadas por id
+                                              const imagenesPorTipo: Record<
+                                                number,
+                                                ImagenIntento[]
+                                              > = {};
 
-                                                  return (
-                                                    <div
-                                                      key={imgIdx}
-                                                      className="flex flex-col group/img"
-                                                    >
-                                                      <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
-                                                        <span>{emoji}</span>
-                                                        <span className="hidden sm:inline">
-                                                          {tipo}
-                                                        </span>
-                                                      </div>
-                                                      <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
-                                                        {imagen.imagen ? (
-                                                          // eslint-disable-next-line @next/next/no-img-element
-                                                          <img
-                                                            src={imagen.imagen}
-                                                            alt={tipo}
-                                                            className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
-                                                            onClick={() =>
-                                                              setImagePreviewUrl(
-                                                                imagen.imagen as string
-                                                              )
-                                                            }
-                                                          />
-                                                        ) : (
-                                                          <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
-                                                            —
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    </div>
+                                              intento.imagenes!.forEach(
+                                                (img) => {
+                                                  const tipo =
+                                                    img.idTipoImagen || 0;
+                                                  if (!imagenesPorTipo[tipo]) {
+                                                    imagenesPorTipo[tipo] = [];
+                                                  }
+                                                  imagenesPorTipo[tipo].push(
+                                                    img
                                                   );
                                                 }
-                                              )}
-                                            </div>
+                                              );
+
+                                              // Ordenar por id
+                                              Object.keys(
+                                                imagenesPorTipo
+                                              ).forEach((tipo) => {
+                                                imagenesPorTipo[
+                                                  Number(tipo)
+                                                ].sort(
+                                                  (a, b) =>
+                                                    (Number(a.id) || 0) -
+                                                    (Number(b.id) || 0)
+                                                );
+                                              });
+
+                                              return (
+                                                <div className="space-y-3">
+                                                  {/* Primera fila: Frontal | Trasera | Selfie */}
+                                                  <div className="grid grid-cols-3 gap-2">
+                                                    {[1, 2, 3].map((tipo) => {
+                                                      const tipoEmoji = {
+                                                        1: "📷",
+                                                        2: "📸",
+                                                        3: "🤳",
+                                                      };
+                                                      const tipoNombre = {
+                                                        1: "Frontal",
+                                                        2: "Tras",
+                                                        3: "Selfie",
+                                                      };
+                                                      return (
+                                                        <div
+                                                          key={tipo}
+                                                          className="flex flex-col group/img"
+                                                        >
+                                                          <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                            <span>
+                                                              {
+                                                                tipoEmoji[
+                                                                  tipo as keyof typeof tipoEmoji
+                                                                ]
+                                                              }
+                                                            </span>
+                                                            <span>
+                                                              {
+                                                                tipoNombre[
+                                                                  tipo as keyof typeof tipoNombre
+                                                                ]
+                                                              }
+                                                            </span>
+                                                          </div>
+                                                          {(() => {
+                                                            const imagen =
+                                                              imagenesPorTipo[
+                                                                tipo
+                                                              ]?.[0];
+                                                            return (
+                                                              <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                                {imagen?.imagen ? (
+                                                                  // eslint-disable-next-line @next/next/no-img-element
+                                                                  <img
+                                                                    src={
+                                                                      imagen.imagen
+                                                                    }
+                                                                    alt={
+                                                                      tipoNombre[
+                                                                        tipo as keyof typeof tipoNombre
+                                                                      ]
+                                                                    }
+                                                                    className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                                    onClick={() =>
+                                                                      setImagePreviewUrl(
+                                                                        imagen.imagen as string
+                                                                      )
+                                                                    }
+                                                                  />
+                                                                ) : (
+                                                                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
+                                                                    —
+                                                                  </div>
+                                                                )}
+                                                              </div>
+                                                            );
+                                                          })()}
+                                                        </div>
+                                                      );
+                                                    })}
+                                                  </div>
+
+                                                  {/* Segunda fila: Correcciones (si hay más de una imagen por tipo) */}
+                                                  {(() => {
+                                                    const tieneCorrecciones =
+                                                      Object.values(
+                                                        imagenesPorTipo
+                                                      ).some(
+                                                        (imgs) =>
+                                                          imgs.length > 1
+                                                      );
+
+                                                    return tieneCorrecciones ? (
+                                                      <div>
+                                                        <p className="text-xs font-bold text-gray-900 dark:text-white mb-2">
+                                                          🔧 Correcciones
+                                                        </p>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                          {[1, 2, 3].map(
+                                                            (tipo) => {
+                                                              const tipoEmoji =
+                                                                {
+                                                                  1: "📷",
+                                                                  2: "📸",
+                                                                  3: "🤳",
+                                                                };
+                                                              const tipoNombre =
+                                                                {
+                                                                  1: "Frontal",
+                                                                  2: "Tras",
+                                                                  3: "Selfie",
+                                                                };
+                                                              const correccion =
+                                                                imagenesPorTipo[
+                                                                  tipo
+                                                                ]?.[1];
+                                                              return (
+                                                                <div
+                                                                  key={tipo}
+                                                                  className="flex flex-col group/img"
+                                                                >
+                                                                  <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                                    <span>
+                                                                      {
+                                                                        tipoEmoji[
+                                                                          tipo as keyof typeof tipoEmoji
+                                                                        ]
+                                                                      }
+                                                                    </span>
+                                                                    <span className="truncate">
+                                                                      Correc.{" "}
+                                                                      {
+                                                                        tipoNombre[
+                                                                          tipo as keyof typeof tipoNombre
+                                                                        ]
+                                                                      }
+                                                                    </span>
+                                                                  </div>
+                                                                  <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                                    {correccion?.imagen ? (
+                                                                      // eslint-disable-next-line @next/next/no-img-element
+                                                                      <img
+                                                                        src={
+                                                                          correccion.imagen
+                                                                        }
+                                                                        alt={`Correc. ${
+                                                                          tipoNombre[
+                                                                            tipo as keyof typeof tipoNombre
+                                                                          ]
+                                                                        }`}
+                                                                        className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                                        onClick={() =>
+                                                                          setImagePreviewUrl(
+                                                                            correccion.imagen as string
+                                                                          )
+                                                                        }
+                                                                      />
+                                                                    ) : (
+                                                                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
+                                                                        —
+                                                                      </div>
+                                                                    )}
+                                                                  </div>
+                                                                </div>
+                                                              );
+                                                            }
+                                                          )}
+                                                        </div>
+                                                      </div>
+                                                    ) : null;
+                                                  })()}
+                                                </div>
+                                              );
+                                            })()
                                           ) : (
                                             <div className="text-center py-2 text-gray-600 dark:text-gray-400 text-xs font-medium">
                                               ⚠️ Sin fotos
