@@ -310,6 +310,7 @@ export default function Home() {
     cantCorreccionFrontal: number;
     cantCorreccionTrasera: number;
     cantCorreccionSelfie: number;
+    sinCorrecciones: number;
   };
   const [afiliacionesNuevosItems, setAfiliacionesNuevosItems] = useState<
     AfiliacionNuevaItem[]
@@ -335,6 +336,7 @@ export default function Home() {
     usuariosFrontal: number;
     usuariosTrasera: number;
     usuariosSelfie: number;
+    sinCorrecciones: number;
   };
 
   // Obtener todos los valores únicos de intentos
@@ -365,6 +367,7 @@ export default function Home() {
           usuariosFrontal: 0,
           usuariosTrasera: 0,
           usuariosSelfie: 0,
+          sinCorrecciones: 0,
         });
       }
 
@@ -380,6 +383,9 @@ export default function Home() {
       row.correccionesFrontal += item.cantCorreccionFrontal;
       row.correccionesTrasera += item.cantCorreccionTrasera;
       row.correccionesSelfie += item.cantCorreccionSelfie;
+
+      // Sumar sinCorrecciones
+      row.sinCorrecciones += item.sinCorrecciones;
 
       // Contar usuarios que tienen correcciones (para el porcentaje)
       if (item.cantCorreccionFrontal > 0) {
@@ -1622,6 +1628,7 @@ export default function Home() {
         cantCorreccionFrontal: (r?.cantCorreccionFrontal as number) ?? 0,
         cantCorreccionTrasera: (r?.cantCorreccionTrasera as number) ?? 0,
         cantCorreccionSelfie: (r?.cantCorreccionSelfie as number) ?? 0,
+        sinCorrecciones: (r?.sinCorrecciones as number) ?? 0,
       }));
       setAfiliacionesNuevosItems(mapped);
     } catch (e) {
@@ -3821,164 +3828,182 @@ export default function Home() {
                   ) : (
                     <div className="mt-8">
                       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
-                        {fotosFiltrados.map((usuario) => (
-                          <div
-                            key={String(usuario.id_usuario_digital)}
-                            className="group rounded-lg border-2 border-transparent bg-white dark:bg-gray-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-500 dark:hover:border-blue-400"
-                          >
-                            {/* Header decorativo del usuario */}
-                            <div className="bg-gradient-to-135 from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-800 px-4 py-3 relative overflow-hidden">
-                              <div className="absolute top-0 right-0 w-16 h-16 bg-white/15 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
-                              <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/10 rounded-full -ml-6 -mb-6" />
+                        {fotosFiltrados.map((usuario) => {
+                          // Generar color pastel basado en id_usuario_digital
+                          const colors = [
+                            "bg-red-100 dark:bg-red-900/30",
+                            "bg-blue-100 dark:bg-blue-900/30",
+                            "bg-green-100 dark:bg-green-900/30",
+                            "bg-yellow-100 dark:bg-yellow-900/30",
+                            "bg-purple-100 dark:bg-purple-900/30",
+                            "bg-pink-100 dark:bg-pink-900/30",
+                            "bg-indigo-100 dark:bg-indigo-900/30",
+                            "bg-cyan-100 dark:bg-cyan-900/30",
+                          ];
+                          const colorIdx =
+                            (Number(usuario.id_usuario_digital) || 0) %
+                            colors.length;
+                          const bgColor = colors[colorIdx];
 
-                              <div className="relative z-10">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
-                                      {usuario.nombre_preferido ||
-                                        `Usuario ${usuario.id_usuario_digital}`}
-                                    </h2>
-                                    <p className="text-blue-200 text-xs mt-0.5 opacity-95 font-medium">
-                                      ID: {usuario.id_usuario_digital}
-                                    </p>
-                                  </div>
-                                  <div className="bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full whitespace-nowrap">
-                                    <span className="text-white text-xs font-bold">
-                                      {usuario.intentos?.length || 0}
-                                    </span>
-                                  </div>
-                                </div>
+                          return (
+                            <div
+                              key={String(usuario.id_usuario_digital)}
+                              className={`group rounded-lg border-2 border-transparent ${bgColor} overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-500 dark:hover:border-blue-400`}
+                            >
+                              {/* Header decorativo del usuario */}
+                              <div className="bg-gradient-to-135 from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-800 px-4 py-3 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/15 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
+                                <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/10 rounded-full -ml-6 -mb-6" />
 
-                                {/* Badges de información */}
-                                <div className="flex flex-wrap gap-1.5 mt-2">
-                                  {usuario.sucursal_venta && (
-                                    <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
-                                      📍 {usuario.sucursal_venta}
+                                <div className="relative z-10">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
+                                        {usuario.nombre_preferido ||
+                                          `Usuario ${usuario.id_usuario_digital}`}
+                                      </h2>
+                                      <p className="text-blue-200 text-xs mt-0.5 opacity-95 font-medium">
+                                        ID: {usuario.id_usuario_digital}
+                                      </p>
                                     </div>
-                                  )}
-                                  {usuario.asesor_venta && (
-                                    <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
-                                      👤 {usuario.asesor_venta}
+                                    <div className="bg-white/30 backdrop-blur-sm px-2 py-1 rounded-full whitespace-nowrap">
+                                      <span className="text-white text-xs font-bold">
+                                        {usuario.intentos?.length || 0}
+                                      </span>
                                     </div>
-                                  )}
+                                  </div>
+
+                                  {/* Badges de información */}
+                                  <div className="flex flex-wrap gap-1.5 mt-2">
+                                    {usuario.sucursal_venta && (
+                                      <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
+                                        📍 {usuario.sucursal_venta}
+                                      </div>
+                                    )}
+                                    {usuario.asesor_venta && (
+                                      <div className="bg-white/35 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs font-semibold">
+                                        👤 {usuario.asesor_venta}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Contenedor de intentos */}
-                            <div className="p-3">
-                              {usuario.intentos &&
-                              usuario.intentos.length > 0 ? (
-                                <div className="space-y-3">
-                                  {usuario.intentos.map(
-                                    (intento, intentoIdx) => (
-                                      <div
-                                        key={intento.idIntento || intentoIdx}
-                                        className="bg-gray-50 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 p-3 hover:shadow-md transition-shadow"
-                                      >
-                                        {/* Badge del intento */}
-                                        <div className="mb-3 flex items-center gap-2">
-                                          <div
-                                            className={`w-1.5 h-5 rounded-full ${
-                                              intentoIdx === 0
-                                                ? "bg-green-600"
-                                                : "bg-amber-600"
-                                            }`}
-                                          />
-                                          <span className="text-xs font-bold text-gray-900 dark:text-white">
-                                            {intentoIdx === 0
-                                              ? `✨ Inicial (${intento.idIntento})`
-                                              : `🔄 Correc. ${intentoIdx} (${intento.idIntento})`}
-                                          </span>
+                              {/* Contenedor de intentos */}
+                              <div className="p-3">
+                                {usuario.intentos &&
+                                usuario.intentos.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {usuario.intentos.map(
+                                      (intento, intentoIdx) => (
+                                        <div
+                                          key={intento.idIntento || intentoIdx}
+                                          className="bg-gray-50 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 p-3 hover:shadow-md transition-shadow"
+                                        >
+                                          {/* Badge del intento */}
+                                          <div className="mb-3 flex items-center gap-2">
+                                            <div
+                                              className={`w-1.5 h-5 rounded-full ${
+                                                intentoIdx === 0
+                                                  ? "bg-green-600"
+                                                  : "bg-amber-600"
+                                              }`}
+                                            />
+                                            <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                              {intentoIdx === 0
+                                                ? `✨ Inicial (${intento.idIntento})`
+                                                : `🔄 Correc. ${intentoIdx} (${intento.idIntento})`}
+                                            </span>
+                                          </div>
+
+                                          {/* Grid de fotos */}
+                                          {intento.imagenes &&
+                                          Array.isArray(intento.imagenes) &&
+                                          intento.imagenes.length > 0 ? (
+                                            <div className="grid grid-cols-3 gap-2">
+                                              {intento.imagenes.map(
+                                                (imagen, imgIdx) => {
+                                                  const tipoTexto: Record<
+                                                    number,
+                                                    string
+                                                  > = {
+                                                    1: "Front",
+                                                    2: "Tras",
+                                                    3: "Self",
+                                                  };
+                                                  const tipoEmoji: Record<
+                                                    number,
+                                                    string
+                                                  > = {
+                                                    1: "📷",
+                                                    2: "📸",
+                                                    3: "🤳",
+                                                  };
+                                                  const tipo =
+                                                    tipoTexto[
+                                                      imagen.idTipoImagen || 0
+                                                    ] || "Img";
+                                                  const emoji =
+                                                    tipoEmoji[
+                                                      imagen.idTipoImagen || 0
+                                                    ] || "📷";
+
+                                                  return (
+                                                    <div
+                                                      key={imgIdx}
+                                                      className="flex flex-col group/img"
+                                                    >
+                                                      <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                        <span>{emoji}</span>
+                                                        <span className="hidden sm:inline">
+                                                          {tipo}
+                                                        </span>
+                                                      </div>
+                                                      <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                        {imagen.imagen ? (
+                                                          // eslint-disable-next-line @next/next/no-img-element
+                                                          <img
+                                                            src={imagen.imagen}
+                                                            alt={tipo}
+                                                            className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                            onClick={() =>
+                                                              setImagePreviewUrl(
+                                                                imagen.imagen as string
+                                                              )
+                                                            }
+                                                          />
+                                                        ) : (
+                                                          <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
+                                                            —
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                }
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="text-center py-2 text-gray-600 dark:text-gray-400 text-xs font-medium">
+                                              ⚠️ Sin fotos
+                                            </div>
+                                          )}
                                         </div>
-
-                                        {/* Grid de fotos */}
-                                        {intento.imagenes &&
-                                        Array.isArray(intento.imagenes) &&
-                                        intento.imagenes.length > 0 ? (
-                                          <div className="grid grid-cols-3 gap-2">
-                                            {intento.imagenes.map(
-                                              (imagen, imgIdx) => {
-                                                const tipoTexto: Record<
-                                                  number,
-                                                  string
-                                                > = {
-                                                  1: "Front",
-                                                  2: "Tras",
-                                                  3: "Self",
-                                                };
-                                                const tipoEmoji: Record<
-                                                  number,
-                                                  string
-                                                > = {
-                                                  1: "📷",
-                                                  2: "📸",
-                                                  3: "🤳",
-                                                };
-                                                const tipo =
-                                                  tipoTexto[
-                                                    imagen.idTipoImagen || 0
-                                                  ] || "Img";
-                                                const emoji =
-                                                  tipoEmoji[
-                                                    imagen.idTipoImagen || 0
-                                                  ] || "📷";
-
-                                                return (
-                                                  <div
-                                                    key={imgIdx}
-                                                    className="flex flex-col group/img"
-                                                  >
-                                                    <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
-                                                      <span>{emoji}</span>
-                                                      <span className="hidden sm:inline">
-                                                        {tipo}
-                                                      </span>
-                                                    </div>
-                                                    <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
-                                                      {imagen.imagen ? (
-                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                        <img
-                                                          src={imagen.imagen}
-                                                          alt={tipo}
-                                                          className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
-                                                          onClick={() =>
-                                                            setImagePreviewUrl(
-                                                              imagen.imagen as string
-                                                            )
-                                                          }
-                                                        />
-                                                      ) : (
-                                                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
-                                                          —
-                                                        </div>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <div className="text-center py-2 text-gray-600 dark:text-gray-400 text-xs font-medium">
-                                            ⚠️ Sin fotos
-                                          </div>
-                                        )}
-                                      </div>
-                                    )
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="text-center py-4 text-gray-600 dark:text-gray-400">
-                                  <p className="text-lg">📭</p>
-                                  <p className="text-xs font-medium mt-1">
-                                    Sin intentos
-                                  </p>
-                                </div>
-                              )}
+                                      )
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-4 text-gray-600 dark:text-gray-400">
+                                    <p className="text-lg">📭</p>
+                                    <p className="text-xs font-medium mt-1">
+                                      Sin intentos
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -4360,237 +4385,403 @@ export default function Home() {
                       Sin afiliaciones para mostrar
                     </div>
                   ) : (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
-                        <thead className="bg-[#6885a7]">
-                          <tr>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              Fecha
-                            </th>
-                            {intentosUnicos.map((intento) => (
-                              <React.Fragment key={intento}>
+                    <div className="mt-4 space-y-6">
+                      {/* TABLA 1: INTENTOS */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                          Intentos
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                            <thead className="bg-[#6885a7]">
+                              <tr>
                                 <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  {intento} Intento{intento !== 1 ? "s" : ""}
+                                  Fecha
                                 </th>
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  % {intento} Intento{intento !== 1 ? "s" : ""}
-                                </th>
-                              </React.Fragment>
-                            ))}
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              Correcciones Frontal
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              % Frontal
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              Correcciones Trasera
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              % Trasera
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              Correcciones Selfie
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              % Selfie
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              Suma Total
-                            </th>
-                            <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              % del Total General
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {afiliacionesNuevosAgrupado.map((row, idx) => (
-                            <tr
-                              key={idx}
-                              className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                            >
-                              <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
-                                {row.fecha}
-                              </td>
-                              {intentosUnicos.map((intento) => {
-                                const count = row.intentosCounts[intento] || 0;
-                                const percentage =
-                                  row.total > 0
-                                    ? ((count / row.total) * 100).toFixed(1)
-                                    : "0";
-                                return (
+                                {intentosUnicos.map((intento) => (
                                   <React.Fragment key={intento}>
-                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                      {count}
-                                    </td>
-                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                      {percentage}%
-                                    </td>
+                                    <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {intento} Intento
+                                      {intento !== 1 ? "s" : ""}
+                                    </th>
+                                    <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      % {intento} Intento
+                                      {intento !== 1 ? "s" : ""}
+                                    </th>
                                   </React.Fragment>
-                                );
-                              })}
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {row.correccionesFrontal}
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                {row.total > 0
-                                  ? (
-                                      (row.usuariosFrontal / row.total) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0"}
-                                %
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {row.correccionesTrasera}
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                {row.total > 0
-                                  ? (
-                                      (row.usuariosTrasera / row.total) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0"}
-                                %
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {row.correccionesSelfie}
-                              </td>
-                              <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                {row.total > 0
-                                  ? (
-                                      (row.usuariosSelfie / row.total) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0"}
-                                %
-                              </td>
-                              <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
-                                {row.total}
-                              </td>
-                              <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
-                                {(() => {
-                                  const totalSum =
+                                ))}
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Suma Total
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % del Total General
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                              {afiliacionesNuevosAgrupado.map((row, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                    {row.fecha}
+                                  </td>
+                                  {intentosUnicos.map((intento) => {
+                                    const count =
+                                      row.intentosCounts[intento] || 0;
+                                    const percentage =
+                                      row.total > 0
+                                        ? ((count / row.total) * 100).toFixed(1)
+                                        : "0";
+                                    return (
+                                      <React.Fragment key={intento}>
+                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                          {count}
+                                        </td>
+                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                          {percentage}%
+                                        </td>
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                    {row.total}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                                    {(() => {
+                                      const totalSum =
+                                        afiliacionesNuevosAgrupado.reduce(
+                                          (sum, r) => sum + r.total,
+                                          0
+                                        );
+                                      return totalSum > 0
+                                        ? (
+                                            (row.total / totalSum) *
+                                            100
+                                          ).toFixed(1)
+                                        : "0";
+                                    })()}
+                                    %
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-gray-50 dark:bg-gray-700">
+                              <tr>
+                                <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                  SUMA TOTAL
+                                </th>
+                                {intentosUnicos.map((intento) => {
+                                  const totalCount =
                                     afiliacionesNuevosAgrupado.reduce(
-                                      (sum, r) => sum + r.total,
+                                      (sum, row) =>
+                                        sum +
+                                        (row.intentosCounts[intento] || 0),
                                       0
                                     );
-                                  return totalSum > 0
-                                    ? ((row.total / totalSum) * 100).toFixed(1)
-                                    : "0";
-                                })()}
-                                %
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-gray-50 dark:bg-gray-700">
-                          <tr>
-                            <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
-                              SUMA TOTAL
-                            </th>
-                            {intentosUnicos.map((intento) => {
-                              const totalCount =
-                                afiliacionesNuevosAgrupado.reduce(
-                                  (sum, row) =>
-                                    sum + (row.intentosCounts[intento] || 0),
-                                  0
-                                );
-                              const totalUsuarios =
-                                afiliacionesNuevosAgrupado.reduce(
-                                  (sum, row) => sum + row.total,
-                                  0
-                                );
-                              const percentage =
-                                totalUsuarios > 0
-                                  ? (
-                                      (totalCount / totalUsuarios) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0";
-                              return (
-                                <React.Fragment key={intento}>
-                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                    {totalCount}
-                                  </th>
-                                  <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                                    {percentage}%
-                                  </th>
-                                </React.Fragment>
-                              );
-                            })}
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              {afiliacionesNuevosAgrupado.reduce(
-                                (sum, row) => sum + row.correccionesFrontal,
-                                0
-                              )}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                              {(() => {
-                                const totalUsuarios =
-                                  afiliacionesNuevosAgrupado.reduce(
+                                  const totalUsuarios =
+                                    afiliacionesNuevosAgrupado.reduce(
+                                      (sum, row) => sum + row.total,
+                                      0
+                                    );
+                                  const percentage =
+                                    totalUsuarios > 0
+                                      ? (
+                                          (totalCount / totalUsuarios) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0";
+                                  return (
+                                    <React.Fragment key={intento}>
+                                      <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {totalCount}
+                                      </th>
+                                      <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                        {percentage}%
+                                      </th>
+                                    </React.Fragment>
+                                  );
+                                })}
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
                                     (sum, row) => sum + row.total,
                                     0
-                                  );
-                                const usuariosTrasera =
-                                  afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.usuariosTrasera,
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
+                                  100%
+                                </th>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* TABLA 2: CORRECCIONES */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                          Correcciones
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                            <thead className="bg-[#6885a7]">
+                              <tr>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Fecha
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Sin Correcciones
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % Sin Correcciones
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Correcciones Frontal
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % Frontal
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Correcciones Trasera
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % Trasera
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Correcciones Selfie
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % Selfie
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  Suma Total
+                                </th>
+                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  % del Total General
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                              {afiliacionesNuevosAgrupado.map((row, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                    {row.fecha}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 font-semibold">
+                                    {row.sinCorrecciones || 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                    {row.total > 0
+                                      ? (
+                                          (row.sinCorrecciones / row.total) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0"}
+                                    %
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {row.correccionesFrontal}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                    {row.total > 0
+                                      ? (
+                                          (row.usuariosFrontal / row.total) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0"}
+                                    %
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {row.correccionesTrasera}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                    {row.total > 0
+                                      ? (
+                                          (row.usuariosTrasera / row.total) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0"}
+                                    %
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {row.correccionesSelfie}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                    {row.total > 0
+                                      ? (
+                                          (row.usuariosSelfie / row.total) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0"}
+                                    %
+                                  </td>
+                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                    {row.correccionesFrontal +
+                                      row.correccionesTrasera +
+                                      row.correccionesSelfie}
+                                  </td>
+                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                                    {(() => {
+                                      const totalSum =
+                                        afiliacionesNuevosAgrupado.reduce(
+                                          (sum, r) =>
+                                            sum +
+                                            r.correccionesFrontal +
+                                            r.correccionesTrasera +
+                                            r.correccionesSelfie,
+                                          0
+                                        );
+                                      const rowSum =
+                                        row.correccionesFrontal +
+                                        row.correccionesTrasera +
+                                        row.correccionesSelfie;
+                                      return totalSum > 0
+                                        ? ((rowSum / totalSum) * 100).toFixed(1)
+                                        : "0";
+                                    })()}
+                                    %
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-gray-50 dark:bg-gray-700">
+                              <tr>
+                                <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                  SUMA TOTAL
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) =>
+                                      sum + (row.sinCorrecciones || 0),
                                     0
-                                  );
-                                return totalUsuarios > 0
-                                  ? (
-                                      (usuariosTrasera / totalUsuarios) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0";
-                              })()}
-                              %
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              {afiliacionesNuevosAgrupado.reduce(
-                                (sum, row) => sum + row.correccionesTrasera,
-                                0
-                              )}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                              {(() => {
-                                const totalUsuarios =
-                                  afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.total,
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                  {(() => {
+                                    const totalUsuarios =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.total,
+                                        0
+                                      );
+                                    const sinCorreccionesTotal =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) =>
+                                          sum + (row.sinCorrecciones || 0),
+                                        0
+                                      );
+                                    return totalUsuarios > 0
+                                      ? (
+                                          (sinCorreccionesTotal /
+                                            totalUsuarios) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0";
+                                  })()}
+                                  %
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.correccionesFrontal,
                                     0
-                                  );
-                                const usuariosSelfie =
-                                  afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.usuariosSelfie,
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                  {(() => {
+                                    const totalUsuarios =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.total,
+                                        0
+                                      );
+                                    const usuariosFrontal =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.usuariosFrontal,
+                                        0
+                                      );
+                                    return totalUsuarios > 0
+                                      ? (
+                                          (usuariosFrontal / totalUsuarios) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0";
+                                  })()}
+                                  %
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.correccionesTrasera,
                                     0
-                                  );
-                                return totalUsuarios > 0
-                                  ? (
-                                      (usuariosSelfie / totalUsuarios) *
-                                      100
-                                    ).toFixed(1)
-                                  : "0";
-                              })()}
-                              %
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              {afiliacionesNuevosAgrupado.reduce(
-                                (sum, row) => sum + row.correccionesSelfie,
-                                0
-                              )}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                              {afiliacionesNuevosAgrupado.reduce(
-                                (sum, row) => sum + row.total,
-                                0
-                              )}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
-                              100%
-                            </th>
-                          </tr>
-                        </tfoot>
-                      </table>
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                  {(() => {
+                                    const totalUsuarios =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.total,
+                                        0
+                                      );
+                                    const usuariosTrasera =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.usuariosTrasera,
+                                        0
+                                      );
+                                    return totalUsuarios > 0
+                                      ? (
+                                          (usuariosTrasera / totalUsuarios) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0";
+                                  })()}
+                                  %
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) => sum + row.correccionesSelfie,
+                                    0
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                  {(() => {
+                                    const totalUsuarios =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.total,
+                                        0
+                                      );
+                                    const usuariosSelfie =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.usuariosSelfie,
+                                        0
+                                      );
+                                    return totalUsuarios > 0
+                                      ? (
+                                          (usuariosSelfie / totalUsuarios) *
+                                          100
+                                        ).toFixed(1)
+                                      : "0";
+                                  })()}
+                                  %
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  {afiliacionesNuevosAgrupado.reduce(
+                                    (sum, row) =>
+                                      sum +
+                                      row.correccionesFrontal +
+                                      row.correccionesTrasera +
+                                      row.correccionesSelfie,
+                                    0
+                                  )}
+                                </th>
+                                <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
+                                  100%
+                                </th>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
