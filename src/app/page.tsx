@@ -71,7 +71,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeView, setActiveView] = useState<
     "usuarios" | "reintentos" | "global" | "metricas"
-  >("usuarios");
+  >("metricas");
   // Filtro por origen de creación (no visible en tabla)
   const [originFilter, setOriginFilter] = useState<"ALL" | "WEB" | "APP">(
     "APP"
@@ -84,7 +84,7 @@ export default function Home() {
     | "proveedores"
     | "fotosTienda"
     | "afiliacionesNuevos"
-  >("afiliacionIntentos");
+  >("afiliacionesNuevos");
   const USE_FAKE_METRICAS = false;
   const [showCompareIntentos, setShowCompareIntentos] = useState(false);
   const [showCompareMinutos, setShowCompareMinutos] = useState(false);
@@ -231,6 +231,7 @@ export default function Home() {
     tuvo_conflicto: boolean;
     tieneConflicto: boolean;
     intentos: Intento[] | null;
+    nota: string | null;
   };
   const [fotosItems, setFotosItems] = useState<FotoItem[]>([]);
   const [fotosIsLoading, setFotosIsLoading] = useState<boolean>(false);
@@ -242,6 +243,14 @@ export default function Home() {
   const [fotosSearch, setFotosSearch] = useState<string>("");
   const [fotosUserIdsFilter, setFotosUserIdsFilter] = useState<string[]>([]);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageDataModal, setImageDataModal] = useState<{
+    data: string;
+    title: string;
+  } | null>(null);
+  const [fotosNotas, setFotosNotas] = useState<Record<string, string>>({});
+  const [notasGuardando, setNotasGuardando] = useState<Record<string, boolean>>(
+    {}
+  );
   const sucursalesFotos = useMemo(() => {
     const set = new Set<string>();
     for (const it of fotosItems) {
@@ -1581,8 +1590,19 @@ export default function Home() {
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
         tieneConflicto: (r?.tieneConflicto as boolean) ?? false,
         intentos: (r?.intentos as Intento[] | null) ?? null,
+        nota: (r?.nota as string) ?? null,
       }));
       setFotosItems(mapped);
+
+      // Cargar notas desde el campo "nota" del endpoint
+      const notasMap: Record<string, string> = {};
+      mapped.forEach((item) => {
+        const userId = String(item.id_usuario_digital);
+        if (item.nota) {
+          notasMap[userId] = item.nota;
+        }
+      });
+      setFotosNotas((prev) => ({ ...prev, ...notasMap }));
     } catch (e) {
       setFotosItems([]);
       setFotosError("No se pudieron cargar las fotos");
@@ -1720,6 +1740,113 @@ export default function Home() {
     setFiltroConflictoFotos("");
     setFotosSearch("");
     setFotosUserIdsFilter([]);
+  };
+
+  // Función helper para extraer el confidence del JSON de la imagen
+  const getConfidenceFromData = (data: string | null): number | null => {
+    if (!data) return null;
+    try {
+      const parsed = JSON.parse(data);
+      // Buscar el campo confidence en diferentes formatos posibles
+      // Primero buscar en estructuras anidadas comunes
+      const confidence =
+        parsed.ocrQuality?.confidence ??
+        parsed.ocr_quality?.confidence ??
+        parsed.quality?.confidence ??
+        parsed.analysis?.confidence ??
+        parsed.confidence ??
+        parsed.confidence_score ??
+        parsed.score ??
+        parsed.confidencePercentage ??
+        parsed.confidence_percentage;
+
+      if (typeof confidence === "number") {
+        // Si ya es un número entre 0 y 1, convertirlo a porcentaje
+        if (confidence <= 1) {
+          return confidence * 100;
+        }
+        // Si ya es un porcentaje (0-100), retornarlo tal cual
+        return confidence;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Función para guardar la nota en la base de datos
+  const saveNotaToDB = async (idUsuarioDigital: string, nota: string) => {
+    try {
+      const idUsuarioDigitalNum = Number(idUsuarioDigital);
+      if (Number.isNaN(idUsuarioDigitalNum)) {
+        console.error("ID de usuario no es numérico:", idUsuarioDigital);
+        return;
+      }
+
+      const motivoNoAfiliacion = nota.trim() === "" ? null : nota.trim();
+
+      const response = await fetch("/api/motivos", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idUsuarioDigital: idUsuarioDigitalNum,
+          motivoNoAfiliacion: motivoNoAfiliacion,
+          motivoNoAfiliacionAsesor: null,
+        }),
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || "Error al guardar la nota");
+      }
+    } catch (error) {
+      console.error("Error guardando nota en BD:", error);
+      throw error;
+    }
+  };
+
+  // Función para filtrar usuarios por cantidad de correcciones y navegar a Fotos Tienda
+  const handleCorreccionesCellClick = (
+    fecha: string,
+    cantidadCorrecciones: 0 | 1 | 2 | 3
+  ) => {
+    // Filtrar usuarios que coincidan con la fecha y cantidad de correcciones
+    const usuariosFiltrados = afiliacionesNuevosItems.filter((item) => {
+      const itemFecha = item.fecha_creacion || "desconocida";
+      if (itemFecha !== fecha) return false;
+
+      // Contar cuántas correcciones hizo este usuario
+      let cantidadCorreccionesItem = 0;
+      if (item.cantCorreccionFrontal > 0) cantidadCorreccionesItem++;
+      if (item.cantCorreccionTrasera > 0) cantidadCorreccionesItem++;
+      if (item.cantCorreccionSelfie > 0) cantidadCorreccionesItem++;
+
+      return cantidadCorreccionesItem === cantidadCorrecciones;
+    });
+
+    // Extraer los idUsuarioDigital
+    const ids = Array.from(
+      new Set(
+        usuariosFiltrados
+          .map((item) => {
+            const id = item.idUsuarioDigital;
+            return id == null ? null : String(id);
+          })
+          .filter((v) => v && String(v).trim() !== "")
+      )
+    ) as string[];
+
+    if (ids.length > 0) {
+      setFotosUserIdsFilter(ids);
+      // Alinear el rango de fechas del reporte de Fotos con la fecha seleccionada
+      setFechaInicioFotos(fecha);
+      setFechaFinFotos(fecha);
+      // Cambiar a vista de métricas y tab de fotosTienda
+      setActiveView("metricas");
+      setMetricasTab("fotosTienda");
+    }
   };
 
   // Función para manejar el ordenamiento
@@ -2239,7 +2366,8 @@ export default function Home() {
                     v === "usuarios" ? "reintentos" : "usuarios"
                   )
                 }
-                className="h-9 px-3 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors"
+                disabled
+                className="h-9 px-3 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors opacity-50 cursor-not-allowed"
                 title="Cambiar a reporte de reintentos"
               >
                 {activeView === "reintentos"
@@ -2249,7 +2377,8 @@ export default function Home() {
               <div className="flex gap-2 flex-wrap items-center">
                 <button
                   onClick={() => setActiveView("global")}
-                  className="h-9 px-3 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  disabled
+                  className="h-9 px-3 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 transition-colors opacity-50 cursor-not-allowed"
                   title="Ver Reporte Global"
                 >
                   Reporte Global
@@ -2307,39 +2436,15 @@ export default function Home() {
                 <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
                   <button
                     type="button"
-                    onClick={() => setMetricasTab("afiliacionIntentos")}
+                    onClick={() => setMetricasTab("afiliacionesNuevos")}
                     className={`px-3 py-1.5 text-xs ${
-                      metricasTab === "afiliacionIntentos"
+                      metricasTab === "afiliacionesNuevos"
                         ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
                         : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
                     }`}
-                    title="Afiliación por intentos"
+                    title="Afiliaciones X Intentos (nuevo)"
                   >
-                    Afiliación X Intentos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMetricasTab("tiempoAfiliacionIntento")}
-                    className={`px-3 py-1.5 text-xs ${
-                      metricasTab === "tiempoAfiliacionIntento"
-                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
-                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    }`}
-                    title="Tiempo de afiliación por intento"
-                  >
-                    Tiempo Afiliación X Intento
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMetricasTab("proveedores")}
-                    className={`px-3 py-1.5 text-xs ${
-                      metricasTab === "proveedores"
-                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
-                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    }`}
-                    title="Métricas por proveedores"
-                  >
-                    Proveedores
+                    Afiliaciones X Intentos (nuevo)
                   </button>
                   <button
                     type="button"
@@ -2355,15 +2460,41 @@ export default function Home() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMetricasTab("afiliacionesNuevos")}
+                    onClick={() => setMetricasTab("afiliacionIntentos")}
                     className={`px-3 py-1.5 text-xs ${
-                      metricasTab === "afiliacionesNuevos"
+                      metricasTab === "afiliacionIntentos"
                         ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
                         : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
                     }`}
-                    title="Afiliaciones X Intentos Nuevos"
+                    title="Afiliaciones X Intentos (viejo)"
                   >
-                    Afiliaciones X Intentos Nuevos
+                    Afiliaciones X Intentos (viejo)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("tiempoAfiliacionIntento")}
+                    disabled
+                    className={`px-3 py-1.5 text-xs opacity-50 cursor-not-allowed ${
+                      metricasTab === "tiempoAfiliacionIntento"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Tiempo de afiliación por intento"
+                  >
+                    Tiempo Afiliación X Intento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("proveedores")}
+                    disabled
+                    className={`px-3 py-1.5 text-xs opacity-50 cursor-not-allowed ${
+                      metricasTab === "proveedores"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Métricas por proveedores"
+                  >
+                    Proveedores
                   </button>
                 </div>
               </div>
@@ -3833,50 +3964,38 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="mt-8">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                         {fotosFiltrados.map((usuario) => {
-                          // Generar color pastel basado en id_usuario_digital
-                          const colors = [
-                            "bg-red-100 dark:bg-red-900/30",
-                            "bg-blue-100 dark:bg-blue-900/30",
-                            "bg-green-100 dark:bg-green-900/30",
-                            "bg-yellow-100 dark:bg-yellow-900/30",
-                            "bg-purple-100 dark:bg-purple-900/30",
-                            "bg-pink-100 dark:bg-pink-900/30",
-                            "bg-indigo-100 dark:bg-indigo-900/30",
-                            "bg-cyan-100 dark:bg-cyan-900/30",
-                          ];
-                          const colorIdx =
-                            (Number(usuario.id_usuario_digital) || 0) %
-                            colors.length;
-                          const bgColor = colors[colorIdx];
-
                           return (
                             <div
                               key={String(usuario.id_usuario_digital)}
-                              className={`group rounded-lg border-2 border-transparent ${bgColor} overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-500 dark:hover:border-blue-400`}
+                              className="group rounded-lg border-2 border-gray-700 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 hover:border-blue-400"
+                              style={{ backgroundColor: "#1e2939" }}
                             >
                               {/* Header con información del usuario */}
-                              <div className="bg-gradient-to-135 from-blue-600 via-blue-700 to-indigo-700 dark:from-blue-600 dark:via-blue-700 dark:to-indigo-800 px-4 py-3 relative overflow-hidden">
-                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/15 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
-                                <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/10 rounded-full -ml-6 -mb-6" />
+                              <div
+                                className="px-4 py-3 relative overflow-hidden"
+                                style={{ backgroundColor: "#0f172a" }}
+                              >
+                                <div className="absolute top-0 right-0 w-16 h-16 bg-white/5 rounded-full -mr-8 -mt-8 group-hover:scale-125 transition-transform duration-300" />
+                                <div className="absolute bottom-0 left-0 w-12 h-12 bg-white/5 rounded-full -ml-6 -mb-6" />
 
                                 <div className="relative z-10">
                                   {/* Nombre Preferido */}
                                   <div className="flex items-start justify-between gap-2 mb-2">
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                      <p className="text-xs text-gray-400 font-medium mb-0.5">
                                         Nombre Preferido
                                       </p>
-                                      <h2 className="text-sm font-bold text-white leading-tight group-hover:text-blue-50 transition-colors truncate">
+                                      <h2 className="text-sm font-bold text-white leading-tight group-hover:text-gray-100 transition-colors truncate">
                                         {usuario.nombre_preferido || "N/A"}
                                       </h2>
                                     </div>
                                     <div
                                       className={`px-3 py-1 rounded-full whitespace-nowrap text-xs font-bold ${
                                         usuario.tieneConflicto
-                                          ? "bg-red-500 text-white"
-                                          : "bg-green-500 text-white"
+                                          ? "bg-red-600 text-white"
+                                          : "bg-green-600 text-white"
                                       }`}
                                     >
                                       {usuario.tieneConflicto
@@ -3888,7 +4007,7 @@ export default function Home() {
                                   {/* Sucursal Venta */}
                                   {usuario.sucursal_venta && (
                                     <div className="mb-1.5">
-                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                      <p className="text-xs text-gray-400 font-medium mb-0.5">
                                         Sucursal Venta
                                       </p>
                                       <p className="text-sm text-white font-semibold truncate">
@@ -3900,7 +4019,7 @@ export default function Home() {
                                   {/* Asesor Atendio */}
                                   {usuario.asesor_venta && (
                                     <div className="mb-2">
-                                      <p className="text-xs text-blue-200 font-medium mb-0.5">
+                                      <p className="text-xs text-gray-400 font-medium mb-0.5">
                                         Asesor Atendio
                                       </p>
                                       <p className="text-sm text-white font-semibold truncate">
@@ -3910,14 +4029,17 @@ export default function Home() {
                                   )}
 
                                   {/* ID Usuario Digital */}
-                                  <p className="text-xs text-blue-100 opacity-75 mt-1">
+                                  <p className="text-xs text-gray-500 mt-1">
                                     ID: {usuario.id_usuario_digital}
                                   </p>
                                 </div>
                               </div>
 
                               {/* Contenedor de intentos */}
-                              <div className="p-3">
+                              <div
+                                className="p-3"
+                                style={{ backgroundColor: "#1e2939" }}
+                              >
                                 {usuario.intentos &&
                                 usuario.intentos.length > 0 ? (
                                   <div className="space-y-3">
@@ -3925,7 +4047,7 @@ export default function Home() {
                                       (intento, intentoIdx) => (
                                         <div
                                           key={intento.idIntento || intentoIdx}
-                                          className="bg-gray-50 dark:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 p-3 hover:shadow-md transition-shadow"
+                                          className="bg-gray-800/50 rounded border border-gray-600 p-3 hover:shadow-md transition-shadow"
                                         >
                                           {/* Badge del intento */}
                                           <div className="mb-3 flex items-center gap-2">
@@ -3936,7 +4058,7 @@ export default function Home() {
                                                   : "bg-amber-600"
                                               }`}
                                             />
-                                            <span className="text-xs font-bold text-gray-900 dark:text-white">
+                                            <span className="text-xs font-bold text-white">
                                               {intentoIdx === 0
                                                 ? `✨ Inicial (${intento.idIntento})`
                                                 : `🔄 Correc. ${intentoIdx} (${intento.idIntento})`}
@@ -4000,7 +4122,7 @@ export default function Home() {
                                                           key={tipo}
                                                           className="flex flex-col group/img"
                                                         >
-                                                          <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                          <div className="mb-1 text-xs font-bold text-white flex items-center gap-0.5">
                                                             <span>
                                                               {
                                                                 tipoEmoji[
@@ -4021,30 +4143,73 @@ export default function Home() {
                                                               imagenesPorTipo[
                                                                 tipo
                                                               ]?.[0];
+                                                            const confidence =
+                                                              getConfidenceFromData(
+                                                                imagen?.data ||
+                                                                  null
+                                                              );
                                                             return (
-                                                              <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
-                                                                {imagen?.imagen ? (
-                                                                  // eslint-disable-next-line @next/next/no-img-element
-                                                                  <img
-                                                                    src={
-                                                                      imagen.imagen
-                                                                    }
-                                                                    alt={
-                                                                      tipoNombre[
-                                                                        tipo as keyof typeof tipoNombre
-                                                                      ]
-                                                                    }
-                                                                    className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                              <div className="flex flex-col">
+                                                                {confidence !==
+                                                                  null && (
+                                                                  <div className="mb-1 text-xs font-semibold text-gray-200 text-center">
+                                                                    Confidence:{" "}
+                                                                    {confidence.toFixed(
+                                                                      1
+                                                                    )}
+                                                                    %
+                                                                  </div>
+                                                                )}
+                                                                <div className="aspect-square bg-gradient-to-br from-gray-800 to-gray-900 rounded overflow-hidden border-2 border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                                  {imagen?.imagen ? (
+                                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                                    <img
+                                                                      src={
+                                                                        imagen.imagen
+                                                                      }
+                                                                      alt={
+                                                                        tipoNombre[
+                                                                          tipo as keyof typeof tipoNombre
+                                                                        ]
+                                                                      }
+                                                                      className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                                      onClick={() =>
+                                                                        setImagePreviewUrl(
+                                                                          imagen.imagen as string
+                                                                        )
+                                                                      }
+                                                                    />
+                                                                  ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
+                                                                      —
+                                                                    </div>
+                                                                  )}
+                                                                </div>
+                                                                {imagen?.data && (
+                                                                  <button
+                                                                    type="button"
                                                                     onClick={() =>
-                                                                      setImagePreviewUrl(
-                                                                        imagen.imagen as string
+                                                                      setImageDataModal(
+                                                                        {
+                                                                          data: imagen.data as string,
+                                                                          title: `${
+                                                                            tipoNombre[
+                                                                              tipo as keyof typeof tipoNombre
+                                                                            ]
+                                                                          } - ${
+                                                                            intentoIdx ===
+                                                                            0
+                                                                              ? "Inicial"
+                                                                              : `Corrección ${intentoIdx}`
+                                                                          }`,
+                                                                        }
                                                                       )
                                                                     }
-                                                                  />
-                                                                ) : (
-                                                                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
-                                                                    —
-                                                                  </div>
+                                                                    className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer transition-colors"
+                                                                    title="Ver información de la imagen"
+                                                                  >
+                                                                    info
+                                                                  </button>
                                                                 )}
                                                               </div>
                                                             );
@@ -4066,7 +4231,7 @@ export default function Home() {
 
                                                     return tieneCorrecciones ? (
                                                       <div>
-                                                        <p className="text-xs font-bold text-gray-900 dark:text-white mb-2">
+                                                        <p className="text-xs font-bold text-white mb-2">
                                                           🔧 Correcciones
                                                         </p>
                                                         <div className="grid grid-cols-3 gap-2">
@@ -4088,12 +4253,17 @@ export default function Home() {
                                                                 imagenesPorTipo[
                                                                   tipo
                                                                 ]?.[1];
+                                                              const confidence =
+                                                                getConfidenceFromData(
+                                                                  correccion?.data ||
+                                                                    null
+                                                                );
                                                               return (
                                                                 <div
                                                                   key={tipo}
                                                                   className="flex flex-col group/img"
                                                                 >
-                                                                  <div className="mb-1 text-xs font-bold text-gray-900 dark:text-white flex items-center gap-0.5">
+                                                                  <div className="mb-1 text-xs font-bold text-white flex items-center gap-0.5">
                                                                     <span>
                                                                       {
                                                                         tipoEmoji[
@@ -4110,29 +4280,65 @@ export default function Home() {
                                                                       }
                                                                     </span>
                                                                   </div>
-                                                                  <div className="aspect-square bg-gradient-to-br from-gray-300 to-gray-400 dark:from-gray-800 dark:to-gray-900 rounded overflow-hidden border-2 border-gray-400 dark:border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-500 dark:group-hover/img:border-blue-400 group-hover/img:scale-110">
-                                                                    {correccion?.imagen ? (
-                                                                      // eslint-disable-next-line @next/next/no-img-element
-                                                                      <img
-                                                                        src={
-                                                                          correccion.imagen
-                                                                        }
-                                                                        alt={`Correc. ${
-                                                                          tipoNombre[
-                                                                            tipo as keyof typeof tipoNombre
-                                                                          ]
-                                                                        }`}
-                                                                        className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                                  <div className="flex flex-col">
+                                                                    {confidence !==
+                                                                      null && (
+                                                                      <div className="mb-1 text-xs font-semibold text-gray-200 text-center">
+                                                                        Confidence:{" "}
+                                                                        {confidence.toFixed(
+                                                                          1
+                                                                        )}
+                                                                        %
+                                                                      </div>
+                                                                    )}
+                                                                    <div className="aspect-square bg-gradient-to-br from-gray-800 to-gray-900 rounded overflow-hidden border-2 border-gray-600 shadow-sm hover:shadow-md transition-all group-hover/img:border-blue-400 group-hover/img:scale-110">
+                                                                      {correccion?.imagen ? (
+                                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                                        <img
+                                                                          src={
+                                                                            correccion.imagen
+                                                                          }
+                                                                          alt={`Correc. ${
+                                                                            tipoNombre[
+                                                                              tipo as keyof typeof tipoNombre
+                                                                            ]
+                                                                          }`}
+                                                                          className="w-full h-full object-cover cursor-zoom-in hover:opacity-95 transition-opacity"
+                                                                          onClick={() =>
+                                                                            setImagePreviewUrl(
+                                                                              correccion.imagen as string
+                                                                            )
+                                                                          }
+                                                                        />
+                                                                      ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-400 font-bold">
+                                                                          —
+                                                                        </div>
+                                                                      )}
+                                                                    </div>
+                                                                    {correccion?.data && (
+                                                                      <button
+                                                                        type="button"
                                                                         onClick={() =>
-                                                                          setImagePreviewUrl(
-                                                                            correccion.imagen as string
+                                                                          setImageDataModal(
+                                                                            {
+                                                                              data: correccion.data as string,
+                                                                              title: `Corrección ${
+                                                                                tipoNombre[
+                                                                                  tipo as keyof typeof tipoNombre
+                                                                                ]
+                                                                              } - Intento ${
+                                                                                intentoIdx +
+                                                                                1
+                                                                              }`,
+                                                                            }
                                                                           )
                                                                         }
-                                                                      />
-                                                                    ) : (
-                                                                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 dark:text-gray-400 font-bold">
-                                                                        —
-                                                                      </div>
+                                                                        className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer transition-colors"
+                                                                        title="Ver información de la imagen"
+                                                                      >
+                                                                        info
+                                                                      </button>
                                                                     )}
                                                                   </div>
                                                                 </div>
@@ -4147,7 +4353,7 @@ export default function Home() {
                                               );
                                             })()
                                           ) : (
-                                            <div className="text-center py-2 text-gray-600 dark:text-gray-400 text-xs font-medium">
+                                            <div className="text-center py-2 text-gray-400 text-xs font-medium">
                                               ⚠️ Sin fotos
                                             </div>
                                           )}
@@ -4163,6 +4369,77 @@ export default function Home() {
                                     </p>
                                   </div>
                                 )}
+
+                                {/* Input de nota */}
+                                <div className="mt-4 pt-4 border-t border-gray-600">
+                                  <label className="block text-xs font-medium text-gray-300 mb-1">
+                                    Nota
+                                  </label>
+                                  <textarea
+                                    value={
+                                      fotosNotas[
+                                        String(usuario.id_usuario_digital)
+                                      ] || ""
+                                    }
+                                    onChange={(e) => {
+                                      const userId = String(
+                                        usuario.id_usuario_digital
+                                      );
+                                      setFotosNotas((prev) => ({
+                                        ...prev,
+                                        [userId]: e.target.value,
+                                      }));
+                                    }}
+                                    placeholder="Escribe una nota sobre este usuario..."
+                                    className="w-full px-3 py-2 text-sm border border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 bg-gray-800 text-white placeholder-gray-500 transition-colors resize-none"
+                                    rows={3}
+                                  />
+                                  <div className="mt-2 flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const userId = String(
+                                          usuario.id_usuario_digital
+                                        );
+                                        const nota = fotosNotas[userId] || "";
+
+                                        setNotasGuardando((prev) => ({
+                                          ...prev,
+                                          [userId]: true,
+                                        }));
+                                        try {
+                                          await saveNotaToDB(userId, nota);
+                                        } catch (error) {
+                                          console.error(
+                                            "Error guardando nota:",
+                                            error
+                                          );
+                                          alert(
+                                            "Error al guardar la nota. Por favor, intenta nuevamente."
+                                          );
+                                        } finally {
+                                          setNotasGuardando((prev) => {
+                                            const updated = { ...prev };
+                                            delete updated[userId];
+                                            return updated;
+                                          });
+                                        }
+                                      }}
+                                      disabled={
+                                        notasGuardando[
+                                          String(usuario.id_usuario_digital)
+                                        ]
+                                      }
+                                      className="px-3 py-1.5 text-xs font-medium text-white bg-blue-500 border border-transparent rounded-md hover:bg-blue-400 focus:ring-2 focus:ring-blue-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {notasGuardando[
+                                        String(usuario.id_usuario_digital)
+                                      ]
+                                        ? "Guardando..."
+                                        : "Guardar"}
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           );
@@ -4170,6 +4447,71 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+              {/* Modal de información de imagen */}
+              {imageDataModal && (
+                <div
+                  className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"
+                  onClick={() => setImageDataModal(null)}
+                >
+                  <div
+                    className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        Información de la Imagen
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setImageDataModal(null)}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                        title="Cerrar"
+                      >
+                        <svg
+                          className="w-6 h-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="px-6 py-4 overflow-y-auto flex-1">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        {imageDataModal.title}
+                      </p>
+                      <div className="bg-gray-50 dark:bg-gray-900 rounded-md p-4 border border-gray-200 dark:border-gray-700">
+                        <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words font-mono">
+                          {(() => {
+                            try {
+                              const parsed = JSON.parse(imageDataModal.data);
+                              return JSON.stringify(parsed, null, 2);
+                            } catch {
+                              // Si no es JSON válido, mostrar el texto original
+                              return imageDataModal.data;
+                            }
+                          })()}
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setImageDataModal(null)}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
               {/* Modal de vista ampliada de imagen */}
@@ -4549,135 +4891,426 @@ export default function Home() {
                     </div>
                   ) : (
                     <div className="mt-4 space-y-6">
-                      {/* TABLA 1: INTENTOS */}
-                      <div>
-                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-                          Intentos
-                        </h4>
-                        <div className="overflow-x-auto">
-                          <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
-                            <thead className="bg-[#6885a7]">
-                              <tr>
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  Fecha
-                                </th>
-                                {intentosUnicos.map((intento) => (
-                                  <React.Fragment key={intento}>
-                                    <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                      {intento} Intento
-                                      {intento !== 1 ? "s" : ""}
-                                    </th>
-                                    <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                      % {intento} Intento
-                                      {intento !== 1 ? "s" : ""}
-                                    </th>
-                                  </React.Fragment>
+                      {/* CONTENEDOR FLEX PARA TABLAS 1 Y 3 */}
+                      <div className="flex items-start gap-6">
+                        {/* TABLA 1: INTENTOS */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                            Intentos
+                          </h4>
+                          <div className="overflow-x-auto">
+                            <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                              <thead className="bg-[#6885a7]">
+                                <tr>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Fecha
+                                  </th>
+                                  {intentosUnicos.map((intento) => (
+                                    <React.Fragment key={intento}>
+                                      <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        {intento} Intento
+                                        {intento !== 1 ? "s" : ""}
+                                      </th>
+                                      <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                        % {intento} Intento
+                                        {intento !== 1 ? "s" : ""}
+                                      </th>
+                                    </React.Fragment>
+                                  ))}
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Suma Total
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    % del Total General
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                {afiliacionesNuevosAgrupado.map((row, idx) => (
+                                  <tr
+                                    key={idx}
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                  >
+                                    <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                      {row.fecha}
+                                    </td>
+                                    {intentosUnicos.map((intento) => {
+                                      const count =
+                                        row.intentosCounts[intento] || 0;
+                                      const percentage =
+                                        row.total > 0
+                                          ? ((count / row.total) * 100).toFixed(
+                                              1
+                                            )
+                                          : "0";
+                                      return (
+                                        <React.Fragment key={intento}>
+                                          <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                            {count}
+                                          </td>
+                                          <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                            {percentage}%
+                                          </td>
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                    <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                      {row.total}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                                      {(() => {
+                                        const totalSum =
+                                          afiliacionesNuevosAgrupado.reduce(
+                                            (sum, r) => sum + r.total,
+                                            0
+                                          );
+                                        return totalSum > 0
+                                          ? (
+                                              (row.total / totalSum) *
+                                              100
+                                            ).toFixed(1)
+                                          : "0";
+                                      })()}
+                                      %
+                                    </td>
+                                  </tr>
                                 ))}
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  Suma Total
-                                </th>
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  % del Total General
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                              {afiliacionesNuevosAgrupado.map((row, idx) => (
-                                <tr
-                                  key={idx}
-                                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                                >
-                                  <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
-                                    {row.fecha}
-                                  </td>
+                              </tbody>
+                              <tfoot className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                  <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                    SUMA TOTAL
+                                  </th>
                                   {intentosUnicos.map((intento) => {
-                                    const count =
-                                      row.intentosCounts[intento] || 0;
+                                    const totalCount =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) =>
+                                          sum +
+                                          (row.intentosCounts[intento] || 0),
+                                        0
+                                      );
+                                    const totalUsuarios =
+                                      afiliacionesNuevosAgrupado.reduce(
+                                        (sum, row) => sum + row.total,
+                                        0
+                                      );
                                     const percentage =
-                                      row.total > 0
-                                        ? ((count / row.total) * 100).toFixed(1)
+                                      totalUsuarios > 0
+                                        ? (
+                                            (totalCount / totalUsuarios) *
+                                            100
+                                          ).toFixed(1)
                                         : "0";
                                     return (
                                       <React.Fragment key={intento}>
-                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                          {count}
-                                        </td>
-                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                        <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                          {totalCount}
+                                        </th>
+                                        <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
                                           {percentage}%
-                                        </td>
+                                        </th>
                                       </React.Fragment>
                                     );
                                   })}
-                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
-                                    {row.total}
-                                  </td>
-                                  <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
-                                    {(() => {
-                                      const totalSum =
-                                        afiliacionesNuevosAgrupado.reduce(
-                                          (sum, r) => sum + r.total,
-                                          0
-                                        );
-                                      return totalSum > 0
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {afiliacionesNuevosAgrupado.reduce(
+                                      (sum, row) => sum + row.total,
+                                      0
+                                    )}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
+                                    100%
+                                  </th>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* TABLA 3: CANTIDAD DE CORRECCIONES */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                            Usuarios por Cantidad de Correcciones
+                          </h4>
+                          <div className="overflow-x-auto">
+                            <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                              <thead className="bg-[#6885a7]">
+                                <tr>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Fecha
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Sin Correcciones
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    % Sin Correcciones
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    1 Corrección
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    2 Correcciones
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    3 Correcciones
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Total
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                {(() => {
+                                  // Agrupar usuarios por cantidad de correcciones y fecha
+                                  const correccionesPorFecha: Record<
+                                    string,
+                                    {
+                                      0: number;
+                                      1: number;
+                                      2: number;
+                                      3: number;
+                                      total: number;
+                                    }
+                                  > = {};
+
+                                  afiliacionesNuevosItems.forEach((item) => {
+                                    const fecha =
+                                      item.fecha_creacion || "desconocida";
+                                    if (!correccionesPorFecha[fecha]) {
+                                      correccionesPorFecha[fecha] = {
+                                        0: 0,
+                                        1: 0,
+                                        2: 0,
+                                        3: 0,
+                                        total: 0,
+                                      };
+                                    }
+
+                                    // Contar cuántas correcciones hizo este usuario
+                                    let cantidadCorrecciones = 0;
+                                    if (item.cantCorreccionFrontal > 0)
+                                      cantidadCorrecciones++;
+                                    if (item.cantCorreccionTrasera > 0)
+                                      cantidadCorrecciones++;
+                                    if (item.cantCorreccionSelfie > 0)
+                                      cantidadCorrecciones++;
+
+                                    // Contar todos los usuarios (incluyendo sin correcciones)
+                                    correccionesPorFecha[fecha].total += 1;
+
+                                    // Contar según cantidad de correcciones
+                                    if (cantidadCorrecciones === 0) {
+                                      correccionesPorFecha[fecha][0]++;
+                                    } else if (
+                                      cantidadCorrecciones > 0 &&
+                                      cantidadCorrecciones <= 3
+                                    ) {
+                                      correccionesPorFecha[fecha][
+                                        cantidadCorrecciones as 1 | 2 | 3
+                                      ]++;
+                                    }
+                                  });
+
+                                  // Ordenar por fecha descendente
+                                  const fechasOrdenadas = Object.keys(
+                                    correccionesPorFecha
+                                  ).sort((a, b) => b.localeCompare(a));
+
+                                  return fechasOrdenadas.map((fecha) => {
+                                    const datos = correccionesPorFecha[fecha];
+                                    const total = datos.total;
+                                    const sinCorrecciones = datos[0];
+                                    const porcentajeSinCorrecciones =
+                                      total > 0
                                         ? (
-                                            (row.total / totalSum) *
+                                            (sinCorrecciones / total) *
+                                            100
+                                          ).toFixed(1)
+                                        : "0";
+
+                                    return (
+                                      <tr
+                                        key={fecha}
+                                        className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                      >
+                                        <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                          {fecha}
+                                        </td>
+                                        <td
+                                          onClick={() =>
+                                            handleCorreccionesCellClick(
+                                              fecha,
+                                              0
+                                            )
+                                          }
+                                          className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 font-semibold cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                          title="Clic para ver usuarios sin correcciones en Fotos Tienda"
+                                        >
+                                          {sinCorrecciones}
+                                        </td>
+                                        <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                          {porcentajeSinCorrecciones}%
+                                        </td>
+                                        <td
+                                          onClick={() =>
+                                            handleCorreccionesCellClick(
+                                              fecha,
+                                              1
+                                            )
+                                          }
+                                          className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                          title="Clic para ver usuarios con 1 corrección en Fotos Tienda"
+                                        >
+                                          {datos[1]}
+                                        </td>
+                                        <td
+                                          onClick={() =>
+                                            handleCorreccionesCellClick(
+                                              fecha,
+                                              2
+                                            )
+                                          }
+                                          className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                          title="Clic para ver usuarios con 2 correcciones en Fotos Tienda"
+                                        >
+                                          {datos[2]}
+                                        </td>
+                                        <td
+                                          onClick={() =>
+                                            handleCorreccionesCellClick(
+                                              fecha,
+                                              3
+                                            )
+                                          }
+                                          className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                          title="Clic para ver usuarios con 3 correcciones en Fotos Tienda"
+                                        >
+                                          {datos[3]}
+                                        </td>
+                                        <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
+                                          {total}
+                                        </td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
+                              </tbody>
+                              <tfoot className="bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                  <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                    SUMA TOTAL
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      let totalSinCorrecciones = 0;
+                                      afiliacionesNuevosItems.forEach(
+                                        (item) => {
+                                          let cantidadCorrecciones = 0;
+                                          if (item.cantCorreccionFrontal > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionTrasera > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionSelfie > 0)
+                                            cantidadCorrecciones++;
+                                          if (cantidadCorrecciones === 0)
+                                            totalSinCorrecciones++;
+                                        }
+                                      );
+                                      return totalSinCorrecciones;
+                                    })()}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                    {(() => {
+                                      const totalUsuarios =
+                                        afiliacionesNuevosItems.length;
+                                      let totalSinCorrecciones = 0;
+                                      afiliacionesNuevosItems.forEach(
+                                        (item) => {
+                                          let cantidadCorrecciones = 0;
+                                          if (item.cantCorreccionFrontal > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionTrasera > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionSelfie > 0)
+                                            cantidadCorrecciones++;
+                                          if (cantidadCorrecciones === 0)
+                                            totalSinCorrecciones++;
+                                        }
+                                      );
+                                      return totalUsuarios > 0
+                                        ? (
+                                            (totalSinCorrecciones /
+                                              totalUsuarios) *
                                             100
                                           ).toFixed(1)
                                         : "0";
                                     })()}
                                     %
-                                  </td>
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      let total1 = 0;
+                                      afiliacionesNuevosItems.forEach(
+                                        (item) => {
+                                          let cantidadCorrecciones = 0;
+                                          if (item.cantCorreccionFrontal > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionTrasera > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionSelfie > 0)
+                                            cantidadCorrecciones++;
+                                          if (cantidadCorrecciones === 1)
+                                            total1++;
+                                        }
+                                      );
+                                      return total1;
+                                    })()}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      let total2 = 0;
+                                      afiliacionesNuevosItems.forEach(
+                                        (item) => {
+                                          let cantidadCorrecciones = 0;
+                                          if (item.cantCorreccionFrontal > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionTrasera > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionSelfie > 0)
+                                            cantidadCorrecciones++;
+                                          if (cantidadCorrecciones === 2)
+                                            total2++;
+                                        }
+                                      );
+                                      return total2;
+                                    })()}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {(() => {
+                                      let total3 = 0;
+                                      afiliacionesNuevosItems.forEach(
+                                        (item) => {
+                                          let cantidadCorrecciones = 0;
+                                          if (item.cantCorreccionFrontal > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionTrasera > 0)
+                                            cantidadCorrecciones++;
+                                          if (item.cantCorreccionSelfie > 0)
+                                            cantidadCorrecciones++;
+                                          if (cantidadCorrecciones === 3)
+                                            total3++;
+                                        }
+                                      );
+                                      return total3;
+                                    })()}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {afiliacionesNuevosItems.length}
+                                  </th>
                                 </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-gray-50 dark:bg-gray-700">
-                              <tr>
-                                <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
-                                  SUMA TOTAL
-                                </th>
-                                {intentosUnicos.map((intento) => {
-                                  const totalCount =
-                                    afiliacionesNuevosAgrupado.reduce(
-                                      (sum, row) =>
-                                        sum +
-                                        (row.intentosCounts[intento] || 0),
-                                      0
-                                    );
-                                  const totalUsuarios =
-                                    afiliacionesNuevosAgrupado.reduce(
-                                      (sum, row) => sum + row.total,
-                                      0
-                                    );
-                                  const percentage =
-                                    totalUsuarios > 0
-                                      ? (
-                                          (totalCount / totalUsuarios) *
-                                          100
-                                        ).toFixed(1)
-                                      : "0";
-                                  return (
-                                    <React.Fragment key={intento}>
-                                      <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                        {totalCount}
-                                      </th>
-                                      <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                                        {percentage}%
-                                      </th>
-                                    </React.Fragment>
-                                  );
-                                })}
-                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  {afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) => sum + row.total,
-                                    0
-                                  )}
-                                </th>
-                                <th className="px-2 py-2 text-center text-xs font-semibold text-green-700 dark:text-green-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-green-50 dark:bg-green-900/20">
-                                  100%
-                                </th>
-                              </tr>
-                            </tfoot>
-                          </table>
+                              </tfoot>
+                            </table>
+                          </div>
                         </div>
                       </div>
 
@@ -4692,12 +5325,6 @@ export default function Home() {
                               <tr>
                                 <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                   Fecha
-                                </th>
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  Sin Correcciones
-                                </th>
-                                <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  % Sin Correcciones
                                 </th>
                                 <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                   Correcciones Frontal
@@ -4733,18 +5360,6 @@ export default function Home() {
                                 >
                                   <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
                                     {row.fecha}
-                                  </td>
-                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 font-semibold">
-                                    {row.sinCorrecciones || 0}
-                                  </td>
-                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
-                                    {row.total > 0
-                                      ? (
-                                          (row.sinCorrecciones / row.total) *
-                                          100
-                                        ).toFixed(1)
-                                      : "0"}
-                                    %
                                   </td>
                                   <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                     {row.correccionesFrontal}
@@ -4815,36 +5430,6 @@ export default function Home() {
                               <tr>
                                 <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
                                   SUMA TOTAL
-                                </th>
-                                <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                  {afiliacionesNuevosAgrupado.reduce(
-                                    (sum, row) =>
-                                      sum + (row.sinCorrecciones || 0),
-                                    0
-                                  )}
-                                </th>
-                                <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
-                                  {(() => {
-                                    const totalUsuarios =
-                                      afiliacionesNuevosAgrupado.reduce(
-                                        (sum, row) => sum + row.total,
-                                        0
-                                      );
-                                    const sinCorreccionesTotal =
-                                      afiliacionesNuevosAgrupado.reduce(
-                                        (sum, row) =>
-                                          sum + (row.sinCorrecciones || 0),
-                                        0
-                                      );
-                                    return totalUsuarios > 0
-                                      ? (
-                                          (sinCorreccionesTotal /
-                                            totalUsuarios) *
-                                          100
-                                        ).toFixed(1)
-                                      : "0";
-                                  })()}
-                                  %
                                 </th>
                                 <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                   {afiliacionesNuevosAgrupado.reduce(

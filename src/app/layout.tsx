@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Reportes de Lealtad de Clientes",
-  description: "Sistema de reportes para gestión de lealtad de clientes digitales",
+  description:
+    "Sistema de reportes para gestión de lealtad de clientes digitales",
 };
 
 export default function RootLayout({
