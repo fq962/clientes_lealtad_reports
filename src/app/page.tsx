@@ -286,16 +286,16 @@ export default function Home() {
 
     // Filtro por afiliación
     if (filtroAfiliacionFotos === "AFILIADO") {
-      base = base.filter((r) => r.id_contacto != null);
+      base = base.filter((r) => r.id_contacto != null && r.id_contacto !== 0);
     } else if (filtroAfiliacionFotos === "NO-AFILIADO") {
-      base = base.filter((r) => r.id_contacto == null);
+      base = base.filter((r) => r.id_contacto == null || r.id_contacto === 0);
     }
 
     // Filtro por conflicto
     if (filtroConflictoFotos === "CON-CONFLICTO") {
-      base = base.filter((r) => r.tuvo_conflicto === true);
+      base = base.filter((r) => r.tieneConflicto === true);
     } else if (filtroConflictoFotos === "SIN-CONFLICTO") {
-      base = base.filter((r) => r.tuvo_conflicto === false);
+      base = base.filter((r) => r.tieneConflicto === false);
     }
 
     // Filtro por texto (nombre, asesor, sucursal)
@@ -1824,6 +1824,50 @@ export default function Home() {
       if (item.cantCorreccionSelfie > 0) cantidadCorreccionesItem++;
 
       return cantidadCorreccionesItem === cantidadCorrecciones;
+    });
+
+    // Extraer los idUsuarioDigital
+    const ids = Array.from(
+      new Set(
+        usuariosFiltrados
+          .map((item) => {
+            const id = item.idUsuarioDigital;
+            return id == null ? null : String(id);
+          })
+          .filter((v) => v && String(v).trim() !== "")
+      )
+    ) as string[];
+
+    if (ids.length > 0) {
+      setFotosUserIdsFilter(ids);
+      // Alinear el rango de fechas del reporte de Fotos con la fecha seleccionada
+      setFechaInicioFotos(fecha);
+      setFechaFinFotos(fecha);
+      // Cambiar a vista de métricas y tab de fotosTienda
+      setActiveView("metricas");
+      setMetricasTab("fotosTienda");
+    }
+  };
+
+  // Función para filtrar usuarios por tipo de corrección y navegar a Fotos Tienda
+  const handleTipoCorreccionClick = (
+    fecha: string,
+    tipoCorreccion: "frontal" | "trasera" | "selfie"
+  ) => {
+    // Filtrar usuarios que coincidan con la fecha y tengan correcciones del tipo especificado
+    const usuariosFiltrados = afiliacionesNuevosItems.filter((item) => {
+      const itemFecha = item.fecha_creacion || "desconocida";
+      if (itemFecha !== fecha) return false;
+
+      // Verificar si tiene correcciones del tipo especificado
+      if (tipoCorreccion === "frontal") {
+        return item.cantCorreccionFrontal > 0;
+      } else if (tipoCorreccion === "trasera") {
+        return item.cantCorreccionTrasera > 0;
+      } else if (tipoCorreccion === "selfie") {
+        return item.cantCorreccionSelfie > 0;
+      }
+      return false;
     });
 
     // Extraer los idUsuarioDigital
@@ -5361,7 +5405,16 @@ export default function Home() {
                                   <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
                                     {row.fecha}
                                   </td>
-                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  <td
+                                    onClick={() =>
+                                      handleTipoCorreccionClick(
+                                        row.fecha,
+                                        "frontal"
+                                      )
+                                    }
+                                    className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                    title="Clic para ver usuarios con correcciones frontales en Fotos Tienda"
+                                  >
                                     {row.correccionesFrontal}
                                   </td>
                                   <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
@@ -5373,7 +5426,16 @@ export default function Home() {
                                       : "0"}
                                     %
                                   </td>
-                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  <td
+                                    onClick={() =>
+                                      handleTipoCorreccionClick(
+                                        row.fecha,
+                                        "trasera"
+                                      )
+                                    }
+                                    className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                    title="Clic para ver usuarios con correcciones traseras en Fotos Tienda"
+                                  >
                                     {row.correccionesTrasera}
                                   </td>
                                   <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
@@ -5385,7 +5447,16 @@ export default function Home() {
                                       : "0"}
                                     %
                                   </td>
-                                  <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                  <td
+                                    onClick={() =>
+                                      handleTipoCorreccionClick(
+                                        row.fecha,
+                                        "selfie"
+                                      )
+                                    }
+                                    className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                    title="Clic para ver usuarios con correcciones selfie en Fotos Tienda"
+                                  >
                                     {row.correccionesSelfie}
                                   </td>
                                   <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
