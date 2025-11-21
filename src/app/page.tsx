@@ -248,6 +248,7 @@ export default function Home() {
     title: string;
   } | null>(null);
   const [fotosNotas, setFotosNotas] = useState<Record<string, string>>({});
+  const [fotosTipo, setFotosTipo] = useState<Record<string, string>>({});
   const [notasGuardando, setNotasGuardando] = useState<Record<string, boolean>>(
     {}
   );
@@ -1577,6 +1578,31 @@ export default function Home() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const data = Array.isArray(json?.data) ? json.data : [];
+
+      // Cargar notas y tipos desde el objeto "notas" del endpoint antes del mapeo
+      const notasMap: Record<string, string> = {};
+      const tiposMap: Record<string, string> = {};
+
+      data.forEach((r: Record<string, unknown>) => {
+        const userId = String(r?.id_usuario_digital);
+        const notasObj = r?.notas as
+          | { nota?: string; tipoMotivo?: string }
+          | undefined;
+
+        // Extraer nota del objeto notas
+        if (notasObj?.nota && typeof notasObj.nota === "string") {
+          notasMap[userId] = notasObj.nota;
+        } else if (r?.nota && typeof r.nota === "string") {
+          // Fallback al formato anterior por compatibilidad
+          notasMap[userId] = r.nota;
+        }
+
+        // Extraer tipoMotivo del objeto notas
+        if (notasObj?.tipoMotivo && typeof notasObj.tipoMotivo === "string") {
+          tiposMap[userId] = notasObj.tipoMotivo;
+        }
+      });
+
       const mapped: FotoItem[] = (data as Partial<FotoItem>[]).map((r) => ({
         id: (r?.id as number) ?? String(r?.id ?? ""),
         nombre_preferido: (r?.nombrePreferido as string) ?? null,
@@ -1590,19 +1616,11 @@ export default function Home() {
         tuvo_conflicto: (r?.tuvo_conflicto as boolean) ?? false,
         tieneConflicto: (r?.tieneConflicto as boolean) ?? false,
         intentos: (r?.intentos as Intento[] | null) ?? null,
-        nota: (r?.nota as string) ?? null,
+        nota: null, // Ya no se usa directamente, se carga desde notasMap
       }));
       setFotosItems(mapped);
-
-      // Cargar notas desde el campo "nota" del endpoint
-      const notasMap: Record<string, string> = {};
-      mapped.forEach((item) => {
-        const userId = String(item.id_usuario_digital);
-        if (item.nota) {
-          notasMap[userId] = item.nota;
-        }
-      });
       setFotosNotas((prev) => ({ ...prev, ...notasMap }));
+      setFotosTipo((prev) => ({ ...prev, ...tiposMap }));
     } catch (e) {
       setFotosItems([]);
       setFotosError("No se pudieron cargar las fotos");
@@ -1775,7 +1793,11 @@ export default function Home() {
   };
 
   // Función para guardar la nota en la base de datos
-  const saveNotaToDB = async (idUsuarioDigital: string, nota: string) => {
+  const saveNotaToDB = async (
+    idUsuarioDigital: string,
+    nota: string,
+    tipoMotivoReintento: string | null = null
+  ) => {
     try {
       const idUsuarioDigitalNum = Number(idUsuarioDigital);
       if (Number.isNaN(idUsuarioDigitalNum)) {
@@ -1794,6 +1816,10 @@ export default function Home() {
           idUsuarioDigital: idUsuarioDigitalNum,
           motivoNoAfiliacion: motivoNoAfiliacion,
           motivoNoAfiliacionAsesor: null,
+          tipoMotivoReintento:
+            tipoMotivoReintento && tipoMotivoReintento.trim() !== ""
+              ? tipoMotivoReintento.trim()
+              : null,
         }),
       });
 
@@ -4416,6 +4442,48 @@ export default function Home() {
 
                                 {/* Input de nota */}
                                 <div className="mt-4 pt-4 border-t border-gray-600">
+                                  <div className="mb-3">
+                                    <label className="block text-xs font-medium text-gray-300 mb-1">
+                                      Tipo
+                                    </label>
+                                    <select
+                                      value={
+                                        fotosTipo[
+                                          String(usuario.id_usuario_digital)
+                                        ] || ""
+                                      }
+                                      onChange={(e) => {
+                                        const userId = String(
+                                          usuario.id_usuario_digital
+                                        );
+                                        setFotosTipo((prev) => ({
+                                          ...prev,
+                                          [userId]: e.target.value,
+                                        }));
+                                      }}
+                                      className="w-full px-3 py-2 text-sm border border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 bg-gray-800 text-white transition-colors"
+                                    >
+                                      <option value="">Seleccionar tipo</option>
+                                      <option value="FOTOS MAL TOMADAS">
+                                        FOTOS MAL TOMADAS
+                                      </option>
+                                      <option value="FOTOS CON REFLEJO">
+                                        FOTOS CON REFLEJO
+                                      </option>
+                                      <option value="ERROR DE LA APP">
+                                        ERROR DE LA APP
+                                      </option>
+                                      <option value="ERROR DE BIOMETRIA">
+                                        ERROR DE BIOMETRIA
+                                      </option>
+                                      <option value="ERROR DE OCR (IA)">
+                                        ERROR DE OCR (IA)
+                                      </option>
+                                      <option value="USUARIO DIO PARA ATRAS">
+                                        USUARIO DIO PARA ATRAS
+                                      </option>
+                                    </select>
+                                  </div>
                                   <label className="block text-xs font-medium text-gray-300 mb-1">
                                     Nota
                                   </label>
@@ -4446,13 +4514,18 @@ export default function Home() {
                                           usuario.id_usuario_digital
                                         );
                                         const nota = fotosNotas[userId] || "";
+                                        const tipo = fotosTipo[userId] || null;
 
                                         setNotasGuardando((prev) => ({
                                           ...prev,
                                           [userId]: true,
                                         }));
                                         try {
-                                          await saveNotaToDB(userId, nota);
+                                          await saveNotaToDB(
+                                            userId,
+                                            nota,
+                                            tipo
+                                          );
                                         } catch (error) {
                                           console.error(
                                             "Error guardando nota:",
