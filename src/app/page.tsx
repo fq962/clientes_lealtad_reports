@@ -326,6 +326,7 @@ export default function Home() {
     cantCorreccionTrasera: number;
     cantCorreccionSelfie: number;
     sinCorrecciones: number;
+    cantidadSinIntentos: number;
   };
   const [afiliacionesNuevosItems, setAfiliacionesNuevosItems] = useState<
     AfiliacionNuevaItem[]
@@ -352,6 +353,7 @@ export default function Home() {
     usuariosTrasera: number;
     usuariosSelfie: number;
     sinCorrecciones: number;
+    cantidadSinIntentos: number;
   };
 
   // Obtener todos los valores únicos de intentos
@@ -383,6 +385,7 @@ export default function Home() {
           usuariosTrasera: 0,
           usuariosSelfie: 0,
           sinCorrecciones: 0,
+          cantidadSinIntentos: 0,
         });
       }
 
@@ -401,6 +404,9 @@ export default function Home() {
 
       // Sumar sinCorrecciones
       row.sinCorrecciones += item.sinCorrecciones;
+
+      // Sumar cantidadSinIntentos
+      row.cantidadSinIntentos += item.cantidadSinIntentos;
 
       // Contar usuarios que tienen correcciones (para el porcentaje)
       if (item.cantCorreccionFrontal > 0) {
@@ -1673,6 +1679,7 @@ export default function Home() {
         cantCorreccionTrasera: (r?.cantCorreccionTrasera as number) ?? 0,
         cantCorreccionSelfie: (r?.cantCorreccionSelfie as number) ?? 0,
         sinCorrecciones: (r?.sinCorrecciones as number) ?? 0,
+        cantidadSinIntentos: (r?.cantidadSinIntentos as number) ?? 0,
       }));
       setAfiliacionesNuevosItems(mapped);
     } catch (e) {
@@ -2436,8 +2443,7 @@ export default function Home() {
                     v === "usuarios" ? "reintentos" : "usuarios"
                   )
                 }
-                disabled
-                className="h-9 px-3 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors opacity-50 cursor-not-allowed"
+                className="h-9 px-3 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-md hover:bg-purple-700 focus:ring-2 focus:ring-purple-500 transition-colors"
                 title="Cambiar a reporte de reintentos"
               >
                 {activeView === "reintentos"
@@ -5035,6 +5041,12 @@ export default function Home() {
                                     </React.Fragment>
                                   ))}
                                   <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    Sin Intentos
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    % Sin Intentos
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                     Suma Total
                                   </th>
                                   <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
@@ -5071,6 +5083,19 @@ export default function Home() {
                                         </React.Fragment>
                                       );
                                     })}
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {row.cantidadSinIntentos}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                                      {row.total > 0
+                                        ? (
+                                            (row.cantidadSinIntentos /
+                                              row.total) *
+                                            100
+                                          ).toFixed(1)
+                                        : "0"}
+                                      %
+                                    </td>
                                     <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20">
                                       {row.total}
                                     </td>
@@ -5129,6 +5154,35 @@ export default function Home() {
                                       </React.Fragment>
                                     );
                                   })}
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                    {afiliacionesNuevosAgrupado.reduce(
+                                      (sum, row) =>
+                                        sum + row.cantidadSinIntentos,
+                                      0
+                                    )}
+                                  </th>
+                                  <th className="px-2 py-2 text-center text-xs font-semibold text-yellow-700 dark:text-yellow-300 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-yellow-50 dark:bg-yellow-900/20">
+                                    {(() => {
+                                      const totalSinIntentos =
+                                        afiliacionesNuevosAgrupado.reduce(
+                                          (sum, row) =>
+                                            sum + row.cantidadSinIntentos,
+                                          0
+                                        );
+                                      const totalUsuarios =
+                                        afiliacionesNuevosAgrupado.reduce(
+                                          (sum, row) => sum + row.total,
+                                          0
+                                        );
+                                      return totalUsuarios > 0
+                                        ? (
+                                            (totalSinIntentos / totalUsuarios) *
+                                            100
+                                          ).toFixed(1)
+                                        : "0";
+                                    })()}
+                                    %
+                                  </th>
                                   <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
                                     {afiliacionesNuevosAgrupado.reduce(
                                       (sum, row) => sum + row.total,
