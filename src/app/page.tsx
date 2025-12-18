@@ -341,6 +341,29 @@ export default function Home() {
   const [fechaFinAfiliacionesNuevos, setFechaFinAfiliacionesNuevos] =
     useState<string>(getTodayDate());
 
+  // Estados para el nuevo reporte de intentos/afiliaciones nuevo
+  type ReporteIntentosAfiliacionesNuevoItem = {
+    id_usuario_digital: number;
+    fecha_creacion: string;
+    categoria: string;
+    total_por_conflicto: number;
+    total_abandono: number;
+    total_un_intento: number;
+    total_con_correcciones: number;
+  };
+  const [
+    reporteIntentosAfiliacionesNuevoItems,
+    setReporteIntentosAfiliacionesNuevoItems,
+  ] = useState<ReporteIntentosAfiliacionesNuevoItem[]>([]);
+  const [
+    reporteIntentosAfiliacionesNuevoIsLoading,
+    setReporteIntentosAfiliacionesNuevoIsLoading,
+  ] = useState<boolean>(false);
+  const [
+    reporteIntentosAfiliacionesNuevoError,
+    setReporteIntentosAfiliacionesNuevoError,
+  ] = useState<string | null>(null);
+
   // Agregar datos por fecha para Afiliaciones X Intentos Nuevos
   type AfiliacionesNuevosAgg = {
     fecha: string;
@@ -1692,10 +1715,53 @@ export default function Home() {
     }
   }, [fechaInicioAfiliacionesNuevos, fechaFinAfiliacionesNuevos]);
 
+  // Cargar datos para el reporte de intentos/afiliaciones nuevo
+  const loadReporteIntentosAfiliacionesNuevo = useCallback(async () => {
+    try {
+      setReporteIntentosAfiliacionesNuevoIsLoading(true);
+      setReporteIntentosAfiliacionesNuevoError(null);
+      const params = new URLSearchParams();
+      if (fechaInicioAfiliacionesNuevos)
+        params.set("fechaInicio", fechaInicioAfiliacionesNuevos);
+      if (fechaFinAfiliacionesNuevos)
+        params.set("fechaFin", fechaFinAfiliacionesNuevos);
+      const resp = await fetch(
+        `/api/reporte-intentos-afiliaciones-nuevo?${params.toString()}`,
+        {
+          cache: "no-store",
+        }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+
+      const mapped: ReporteIntentosAfiliacionesNuevoItem[] = (
+        data as Partial<ReporteIntentosAfiliacionesNuevoItem[]>
+      ).map((r) => ({
+        id_usuario_digital: (r?.id_usuario_digital as number) ?? 0,
+        fecha_creacion: (r?.fecha_creacion as string) ?? "",
+        categoria: (r?.categoria as string) ?? "",
+        total_por_conflicto: (r?.total_por_conflicto as number) ?? 0,
+        total_abandono: (r?.total_abandono as number) ?? 0,
+        total_un_intento: (r?.total_un_intento as number) ?? 0,
+        total_con_correcciones: (r?.total_con_correcciones as number) ?? 0,
+      }));
+      setReporteIntentosAfiliacionesNuevoItems(mapped);
+    } catch (e) {
+      setReporteIntentosAfiliacionesNuevoItems([]);
+      setReporteIntentosAfiliacionesNuevoError(
+        "No se pudieron cargar los datos del reporte"
+      );
+    } finally {
+      setReporteIntentosAfiliacionesNuevoIsLoading(false);
+    }
+  }, [fechaInicioAfiliacionesNuevos, fechaFinAfiliacionesNuevos]);
+
   useEffect(() => {
     if (USE_FAKE_METRICAS) return;
     if (activeView === "metricas" && metricasTab === "afiliacionesNuevos") {
       loadAfiliacionesNuevos();
+      loadReporteIntentosAfiliacionesNuevo();
     }
   }, [
     USE_FAKE_METRICAS,
@@ -1704,6 +1770,7 @@ export default function Home() {
     fechaInicioAfiliacionesNuevos,
     fechaFinAfiliacionesNuevos,
     loadAfiliacionesNuevos,
+    loadReporteIntentosAfiliacionesNuevo,
   ]);
 
   // Cerrar vista ampliada con Escape
@@ -1909,6 +1976,61 @@ export default function Home() {
         usuariosFiltrados
           .map((item) => {
             const id = item.idUsuarioDigital;
+            return id == null ? null : String(id);
+          })
+          .filter((v) => v && String(v).trim() !== "")
+      )
+    ) as string[];
+
+    if (ids.length > 0) {
+      setFotosUserIdsFilter(ids);
+      // Alinear el rango de fechas del reporte de Fotos con la fecha seleccionada
+      setFechaInicioFotos(fecha);
+      setFechaFinFotos(fecha);
+      // Cambiar a vista de métricas y tab de fotosTienda
+      setActiveView("metricas");
+      setMetricasTab("fotosTienda");
+    }
+  };
+
+  // Función para filtrar usuarios por categoría del nuevo reporte y navegar a Fotos Tienda
+  const handleReporteIntentosAfiliacionesNuevoClick = (
+    fecha: string,
+    tipoCategoria: "todoBien" | "mas2Intentos" | "conConflicto" | "abandonos"
+  ) => {
+    // Filtrar usuarios que coincidan con la fecha y la categoría
+    const usuariosFiltrados = reporteIntentosAfiliacionesNuevoItems.filter(
+      (item) => {
+        const fechaCompleta = item.fecha_creacion || "";
+        const itemFecha = fechaCompleta.split("T")[0] || "desconocida";
+        if (itemFecha !== fecha) return false;
+
+        // Filtrar según el tipo de categoría
+        switch (tipoCategoria) {
+          case "todoBien":
+            // Usuarios con total_un_intento > 0
+            return (item.total_un_intento || 0) > 0;
+          case "mas2Intentos":
+            // Usuarios con total_con_correcciones > 0
+            return (item.total_con_correcciones || 0) > 0;
+          case "conConflicto":
+            // Usuarios con total_por_conflicto > 0
+            return (item.total_por_conflicto || 0) > 0;
+          case "abandonos":
+            // Usuarios con total_abandono > 0
+            return (item.total_abandono || 0) > 0;
+          default:
+            return false;
+        }
+      }
+    );
+
+    // Extraer los id_usuario_digital
+    const ids = Array.from(
+      new Set(
+        usuariosFiltrados
+          .map((item) => {
+            const id = item.id_usuario_digital;
             return id == null ? null : String(id);
           })
           .filter((v) => v && String(v).trim() !== "")
@@ -4988,7 +5110,10 @@ export default function Home() {
                     <div className="pt-5">
                       <button
                         type="button"
-                        onClick={loadAfiliacionesNuevos}
+                        onClick={() => {
+                          loadAfiliacionesNuevos();
+                          loadReporteIntentosAfiliacionesNuevo();
+                        }}
                         className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
                         title="Buscar afiliaciones nuevas"
                       >
@@ -5727,6 +5852,219 @@ export default function Home() {
                             </tfoot>
                           </table>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TABLA: INTENTOS/CORRECCIONES NUEVO - Siempre visible */}
+                  {!afiliacionesNuevosIsLoading && (
+                    <div className="mt-6">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                        INTENTOS/CORRECCIONES NUEVO
+                      </h4>
+                      {reporteIntentosAfiliacionesNuevoError && (
+                        <div className="mb-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                          {reporteIntentosAfiliacionesNuevoError}
+                        </div>
+                      )}
+                      <div className="overflow-x-auto">
+                        <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                          <thead className="bg-[#6885a7]">
+                            <tr>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Fecha
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Todo Bien
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                + 2 Intentos
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Con Conflicto
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Abandonos
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {(() => {
+                              // Agrupar datos por fecha y sumar los valores
+                              const categoriasPorFecha: Record<
+                                string,
+                                {
+                                  todoBien: number;
+                                  mas2Intentos: number;
+                                  conConflicto: number;
+                                  abandonos: number;
+                                }
+                              > = {};
+
+                              reporteIntentosAfiliacionesNuevoItems.forEach(
+                                (item) => {
+                                  // Extraer solo la fecha (YYYY-MM-DD) de fecha_creacion
+                                  const fechaCompleta =
+                                    item.fecha_creacion || "";
+                                  const fecha =
+                                    fechaCompleta.split("T")[0] ||
+                                    "desconocida";
+
+                                  if (!categoriasPorFecha[fecha]) {
+                                    categoriasPorFecha[fecha] = {
+                                      todoBien: 0,
+                                      mas2Intentos: 0,
+                                      conConflicto: 0,
+                                      abandonos: 0,
+                                    };
+                                  }
+
+                                  // Sumar los valores por fecha
+                                  categoriasPorFecha[fecha].todoBien +=
+                                    item.total_un_intento || 0;
+                                  categoriasPorFecha[fecha].mas2Intentos +=
+                                    item.total_con_correcciones || 0;
+                                  categoriasPorFecha[fecha].conConflicto +=
+                                    item.total_por_conflicto || 0;
+                                  categoriasPorFecha[fecha].abandonos +=
+                                    item.total_abandono || 0;
+                                }
+                              );
+
+                              // Ordenar por fecha descendente
+                              const fechasOrdenadas = Object.keys(
+                                categoriasPorFecha
+                              ).sort((a, b) => b.localeCompare(a));
+
+                              if (reporteIntentosAfiliacionesNuevoIsLoading) {
+                                return (
+                                  <tr>
+                                    <td
+                                      colSpan={5}
+                                      className="px-2 py-4 text-sm text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                    >
+                                      <div className="flex items-center justify-center">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                                        Cargando datos...
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              if (fechasOrdenadas.length === 0) {
+                                return (
+                                  <tr>
+                                    <td
+                                      colSpan={5}
+                                      className="px-2 py-4 text-sm text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                    >
+                                      Sin datos para mostrar
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return fechasOrdenadas.map((fecha) => {
+                                const datos = categoriasPorFecha[fecha];
+
+                                return (
+                                  <tr
+                                    key={fecha}
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                  >
+                                    <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                      {fecha}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleReporteIntentosAfiliacionesNuevoClick(
+                                          fecha,
+                                          "todoBien"
+                                        )
+                                      }
+                                      className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                      title="Clic para ver usuarios 'Todo Bien' en Fotos Tienda"
+                                    >
+                                      {datos.todoBien}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleReporteIntentosAfiliacionesNuevoClick(
+                                          fecha,
+                                          "mas2Intentos"
+                                        )
+                                      }
+                                      className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                      title="Clic para ver usuarios con '+ 2 Intentos' en Fotos Tienda"
+                                    >
+                                      {datos.mas2Intentos}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleReporteIntentosAfiliacionesNuevoClick(
+                                          fecha,
+                                          "conConflicto"
+                                        )
+                                      }
+                                      className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                      title="Clic para ver usuarios 'Con Conflicto' en Fotos Tienda"
+                                    >
+                                      {datos.conConflicto}
+                                    </td>
+                                    <td
+                                      onClick={() =>
+                                        handleReporteIntentosAfiliacionesNuevoClick(
+                                          fecha,
+                                          "abandonos"
+                                        )
+                                      }
+                                      className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                      title="Clic para ver usuarios 'Abandonos' en Fotos Tienda"
+                                    >
+                                      {datos.abandonos}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                          <tfoot className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                              <th className="px-2 py-2 text-left text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                SUMA TOTAL
+                              </th>
+                              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                  (sum, item) =>
+                                    sum + (item.total_un_intento || 0),
+                                  0
+                                )}
+                              </th>
+                              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                  (sum, item) =>
+                                    sum + (item.total_con_correcciones || 0),
+                                  0
+                                )}
+                              </th>
+                              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                  (sum, item) =>
+                                    sum + (item.total_por_conflicto || 0),
+                                  0
+                                )}
+                              </th>
+                              <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                  (sum, item) =>
+                                    sum + (item.total_abandono || 0),
+                                  0
+                                )}
+                              </th>
+                            </tr>
+                          </tfoot>
+                        </table>
                       </div>
                     </div>
                   )}
