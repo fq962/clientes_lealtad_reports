@@ -12,6 +12,7 @@ import type {
   UsuarioDigitalFromAPI,
   APIResponse,
 } from "../../types/usuario";
+import type { AfiliacionPorTiempo } from "../../../lib/services/afiliaciones-por-tiempo";
 import ReporteReintentos from "./components/ReporteReintentos";
 
 export default function Home() {
@@ -84,6 +85,7 @@ export default function Home() {
     | "proveedores"
     | "fotosTienda"
     | "afiliacionesNuevos"
+    | "tiempoAfiliaciones"
   >("afiliacionesNuevos");
   const USE_FAKE_METRICAS = false;
   const [showCompareIntentos, setShowCompareIntentos] = useState(false);
@@ -340,6 +342,20 @@ export default function Home() {
     useState<string>(getTodayDate());
   const [fechaFinAfiliacionesNuevos, setFechaFinAfiliacionesNuevos] =
     useState<string>(getTodayDate());
+
+  // Estados para Tiempo Afiliaciones
+  const [fechaInicioTiempoAfiliaciones, setFechaInicioTiempoAfiliaciones] =
+    useState<string>(getTodayDate());
+  const [fechaFinTiempoAfiliaciones, setFechaFinTiempoAfiliaciones] =
+    useState<string>(getTodayDate());
+  const [tiempoAfiliacionesItems, setTiempoAfiliacionesItems] = useState<
+    AfiliacionPorTiempo[]
+  >([]);
+  const [tiempoAfiliacionesIsLoading, setTiempoAfiliacionesIsLoading] =
+    useState<boolean>(false);
+  const [tiempoAfiliacionesError, setTiempoAfiliacionesError] = useState<
+    string | null
+  >(null);
 
   // Estados para el nuevo reporte de intentos/afiliaciones nuevo
   type ReporteIntentosAfiliacionesNuevoItem = {
@@ -1757,11 +1773,56 @@ export default function Home() {
     }
   }, [fechaInicioAfiliacionesNuevos, fechaFinAfiliacionesNuevos]);
 
+  // Función para cargar datos de Tiempo Afiliaciones
+  const loadTiempoAfiliaciones = useCallback(async () => {
+    try {
+      setTiempoAfiliacionesIsLoading(true);
+      setTiempoAfiliacionesError(null);
+      const params = new URLSearchParams();
+      if (fechaInicioTiempoAfiliaciones)
+        params.set("fechaInicio", fechaInicioTiempoAfiliaciones);
+      if (fechaFinTiempoAfiliaciones)
+        params.set("fechaFin", fechaFinTiempoAfiliaciones);
+      const resp = await fetch(
+        `/api/afiliaciones-por-tiempo?${params.toString()}`,
+        {
+          cache: "no-store",
+        }
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const data = Array.isArray(json?.data) ? json.data : [];
+
+      const mapped: AfiliacionPorTiempo[] = (
+        data as Partial<AfiliacionPorTiempo[]>
+      ).map((r) => ({
+        id_usuario_digital: (r?.id_usuario_digital as number) ?? 0,
+        nombre_preferido: (r?.nombre_preferido as string) ?? "",
+        fecha_creacion: (r?.fecha_creacion as string) ?? "",
+        id_intento: (r?.id_intento as string) ?? "",
+        tiempo_transcurrido: (r?.tiempo_transcurrido as string) ?? "0",
+        un_intento: (r?.un_intento as number) ?? 0,
+        mas_de_una_correccion: (r?.mas_de_una_correccion as number) ?? 0,
+      }));
+      setTiempoAfiliacionesItems(mapped);
+    } catch (e) {
+      setTiempoAfiliacionesItems([]);
+      setTiempoAfiliacionesError(
+        "No se pudieron cargar los datos del reporte"
+      );
+    } finally {
+      setTiempoAfiliacionesIsLoading(false);
+    }
+  }, [fechaInicioTiempoAfiliaciones, fechaFinTiempoAfiliaciones]);
+
   useEffect(() => {
     if (USE_FAKE_METRICAS) return;
     if (activeView === "metricas" && metricasTab === "afiliacionesNuevos") {
       loadAfiliacionesNuevos();
       loadReporteIntentosAfiliacionesNuevo();
+    }
+    if (activeView === "metricas" && metricasTab === "tiempoAfiliaciones") {
+      loadTiempoAfiliaciones();
     }
   }, [
     USE_FAKE_METRICAS,
@@ -1769,8 +1830,11 @@ export default function Home() {
     metricasTab,
     fechaInicioAfiliacionesNuevos,
     fechaFinAfiliacionesNuevos,
+    fechaInicioTiempoAfiliaciones,
+    fechaFinTiempoAfiliaciones,
     loadAfiliacionesNuevos,
     loadReporteIntentosAfiliacionesNuevo,
+    loadTiempoAfiliaciones,
   ]);
 
   // Cerrar vista ampliada con Escape
@@ -2693,6 +2757,18 @@ export default function Home() {
                     title="Métricas por proveedores"
                   >
                     Proveedores
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricasTab("tiempoAfiliaciones")}
+                    className={`px-3 py-1.5 text-xs ${
+                      metricasTab === "tiempoAfiliaciones"
+                        ? "bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-white"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                    }`}
+                    title="Tiempo Afiliaciones"
+                  >
+                    Tiempo Afiliaciones
                   </button>
                 </div>
               </div>
@@ -7125,6 +7201,306 @@ export default function Home() {
             </div>
           </>
         )}
+              {metricasTab === "tiempoAfiliaciones" && (
+                <div className="text-sm text-gray-700 dark:text-gray-300">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                    Tiempo Afiliaciones
+                  </h3>
+
+                  <div className="mt-3 flex items-end gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Inicio
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaInicioTiempoAfiliaciones}
+                        onChange={(e) =>
+                          setFechaInicioTiempoAfiliaciones(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Fin
+                      </label>
+                      <input
+                        type="date"
+                        value={fechaFinTiempoAfiliaciones}
+                        onChange={(e) =>
+                          setFechaFinTiempoAfiliaciones(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      />
+                    </div>
+                    <div className="pt-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          loadTiempoAfiliaciones();
+                        }}
+                        className="h-9 px-3 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 transition-colors"
+                        title="Buscar datos de tiempo afiliaciones"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                  </div>
+
+                  {tiempoAfiliacionesError && (
+                    <div className="mt-3 p-3 text-sm text-yellow-800 dark:text-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                      {tiempoAfiliacionesError}
+                    </div>
+                  )}
+
+                  {tiempoAfiliacionesIsLoading ? (
+                    <div className="mt-6 flex items-center justify-center text-gray-600 dark:text-gray-300">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                      Cargando datos...
+                    </div>
+                  ) : (
+                    <div className="mt-6">
+                      <div className="overflow-x-auto">
+                        <table className="table-auto w-auto text-sm border border-gray-200 dark:border-gray-700 border-collapse">
+                          <thead className="bg-[#6885a7]">
+                            <tr>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Fecha
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                1 Intento<br />(Promedio)
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                1 o mas correcciones<br />(Promedio)
+                              </th>
+                              <th className="px-2 py-2 text-center text-sm font-semibold text-white whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                Total<br />(Promedio)
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {(() => {
+                              // Agrupar datos por fecha_creacion y calcular promedios
+                              const datosPorFecha: Record<
+                                string,
+                                {
+                                  tiemposUnIntento: number[];
+                                  tiemposCorrecciones: number[];
+                                }
+                              > = {};
+
+                              tiempoAfiliacionesItems.forEach((item) => {
+                                const fechaCompleta = item.fecha_creacion || "";
+                                const fecha =
+                                  fechaCompleta.split("T")[0] ||
+                                  "desconocida";
+
+                                if (!datosPorFecha[fecha]) {
+                                  datosPorFecha[fecha] = {
+                                    tiemposUnIntento: [],
+                                    tiemposCorrecciones: [],
+                                  };
+                                }
+
+                                // Para "1 Intento": solo considerar donde un_intento === 1 (ignorar null)
+                                if (item.un_intento === 1) {
+                                  const tiempo = parseFloat(
+                                    item.tiempo_transcurrido || "0"
+                                  );
+                                  if (!isNaN(tiempo)) {
+                                    datosPorFecha[fecha].tiemposUnIntento.push(
+                                      tiempo
+                                    );
+                                  }
+                                }
+
+                                // Para "1 o más correcciones": solo considerar donde mas_de_una_correccion === 1
+                                if (item.mas_de_una_correccion === 1) {
+                                  const tiempo = parseFloat(
+                                    item.tiempo_transcurrido || "0"
+                                  );
+                                  if (!isNaN(tiempo)) {
+                                    datosPorFecha[
+                                      fecha
+                                    ].tiemposCorrecciones.push(tiempo);
+                                  }
+                                }
+                              });
+
+                              // Calcular promedios por fecha
+                              const promediosPorFecha: Record<
+                                string,
+                                {
+                                  promedioUnIntento: number;
+                                  promedioCorrecciones: number;
+                                }
+                              > = {};
+
+                              Object.keys(datosPorFecha).forEach((fecha) => {
+                                const datos = datosPorFecha[fecha];
+                                const promedioUnIntento =
+                                  datos.tiemposUnIntento.length > 0
+                                    ? datos.tiemposUnIntento.reduce(
+                                        (sum, t) => sum + t,
+                                        0
+                                      ) / datos.tiemposUnIntento.length
+                                    : 0;
+                                const promedioCorrecciones =
+                                  datos.tiemposCorrecciones.length > 0
+                                    ? datos.tiemposCorrecciones.reduce(
+                                        (sum, t) => sum + t,
+                                        0
+                                      ) / datos.tiemposCorrecciones.length
+                                    : 0;
+
+                                promediosPorFecha[fecha] = {
+                                  promedioUnIntento,
+                                  promedioCorrecciones,
+                                };
+                              });
+
+                              // Ordenar por fecha descendente
+                              const fechasOrdenadas = Object.keys(
+                                promediosPorFecha
+                              ).sort((a, b) => b.localeCompare(a));
+
+                              if (fechasOrdenadas.length === 0) {
+                                return (
+                                  <tr>
+                                    <td
+                                      colSpan={4}
+                                      className="px-2 py-4 text-sm text-center text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
+                                    >
+                                      Sin datos para mostrar
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return fechasOrdenadas.map((fecha) => {
+                                const datos = promediosPorFecha[fecha];
+                                const total =
+                                  datos.promedioUnIntento +
+                                  datos.promedioCorrecciones;
+
+                                return (
+                                  <tr
+                                    key={fecha}
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                                  >
+                                    <td className="px-2 py-1 text-sm font-mono text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-[#dbe0e6] text-gray-900">
+                                      {fecha}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {datos.promedioUnIntento > 0
+                                        ? datos.promedioUnIntento.toFixed(2)
+                                        : "-"}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
+                                      {datos.promedioCorrecciones > 0
+                                        ? datos.promedioCorrecciones.toFixed(2)
+                                        : "-"}
+                                    </td>
+                                    <td className="px-2 py-1 text-sm font-semibold text-center whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
+                                      {total > 0 ? total.toFixed(2) : "-"}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                          <tfoot className="bg-gray-100 dark:bg-gray-700">
+                            <tr>
+                              <th className="px-2 py-2 text-sm font-semibold text-center whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                Promedio General
+                              </th>
+                              <th className="px-2 py-2 text-sm font-semibold text-center whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                {(() => {
+                                  const todosTiemposUnIntento: number[] = [];
+                                  tiempoAfiliacionesItems.forEach((item) => {
+                                    if (item.un_intento === 1) {
+                                      const tiempo = parseFloat(
+                                        item.tiempo_transcurrido || "0"
+                                      );
+                                      if (!isNaN(tiempo)) {
+                                        todosTiemposUnIntento.push(tiempo);
+                                      }
+                                    }
+                                  });
+                                  const promedio =
+                                    todosTiemposUnIntento.length > 0
+                                      ? todosTiemposUnIntento.reduce(
+                                          (sum, t) => sum + t,
+                                          0
+                                        ) / todosTiemposUnIntento.length
+                                      : 0;
+                                  return promedio > 0
+                                    ? promedio.toFixed(2)
+                                    : "-";
+                                })()}
+                              </th>
+                              <th className="px-2 py-2 text-sm font-semibold text-center whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                {(() => {
+                                  const todosTiemposCorrecciones: number[] = [];
+                                  tiempoAfiliacionesItems.forEach((item) => {
+                                    if (item.mas_de_una_correccion === 1) {
+                                      const tiempo = parseFloat(
+                                        item.tiempo_transcurrido || "0"
+                                      );
+                                      if (!isNaN(tiempo)) {
+                                        todosTiemposCorrecciones.push(tiempo);
+                                      }
+                                    }
+                                  });
+                                  const promedio =
+                                    todosTiemposCorrecciones.length > 0
+                                      ? todosTiemposCorrecciones.reduce(
+                                          (sum, t) => sum + t,
+                                          0
+                                        ) / todosTiemposCorrecciones.length
+                                      : 0;
+                                  return promedio > 0
+                                    ? promedio.toFixed(2)
+                                    : "-";
+                                })()}
+                              </th>
+                              <th className="px-2 py-2 text-sm font-semibold text-center whitespace-nowrap border border-gray-200 dark:border-gray-700">
+                                {(() => {
+                                  const todosTiempos: number[] = [];
+                                  tiempoAfiliacionesItems.forEach((item) => {
+                                    if (
+                                      item.un_intento === 1 ||
+                                      item.mas_de_una_correccion === 1
+                                    ) {
+                                      const tiempo = parseFloat(
+                                        item.tiempo_transcurrido || "0"
+                                      );
+                                      if (!isNaN(tiempo)) {
+                                        todosTiempos.push(tiempo);
+                                      }
+                                    }
+                                  });
+                                  const promedio =
+                                    todosTiempos.length > 0
+                                      ? todosTiempos.reduce(
+                                          (sum, t) => sum + t,
+                                          0
+                                        ) / todosTiempos.length
+                                      : 0;
+                                  return promedio > 0
+                                    ? promedio.toFixed(2)
+                                    : "-";
+                                })()}
+                              </th>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
         {/* Footer con información adicional */}
         {activeView === "usuarios" && (
