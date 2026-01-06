@@ -329,6 +329,7 @@ export default function Home() {
     cantCorreccionSelfie: number;
     sinCorrecciones: number;
     cantidadSinIntentos: number;
+    sucursalVenta?: string;
   };
   const [afiliacionesNuevosItems, setAfiliacionesNuevosItems] = useState<
     AfiliacionNuevaItem[]
@@ -342,6 +343,10 @@ export default function Home() {
     useState<string>(getTodayDate());
   const [fechaFinAfiliacionesNuevos, setFechaFinAfiliacionesNuevos] =
     useState<string>(getTodayDate());
+  const [
+    filtroSucursalAfiliacionesNuevos,
+    setFiltroSucursalAfiliacionesNuevos,
+  ] = useState<string>("");
 
   // Estados para Tiempo Afiliaciones
   const [fechaInicioTiempoAfiliaciones, setFechaInicioTiempoAfiliaciones] =
@@ -366,6 +371,7 @@ export default function Home() {
     total_abandono: number;
     total_un_intento: number;
     total_con_correcciones: number;
+    sucursalVenta?: string;
   };
   const [
     reporteIntentosAfiliacionesNuevoItems,
@@ -406,10 +412,54 @@ export default function Home() {
     return Array.from(intentos).sort((a, b) => a - b);
   }, [afiliacionesNuevosItems]);
 
+  // Obtener sucursales únicas de afiliacionesNuevosItems y reporteIntentosAfiliacionesNuevoItems
+  const sucursalesAfiliacionesNuevos = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of afiliacionesNuevosItems) {
+      const s = (item.sucursalVenta || "").toString().trim();
+      if (s) set.add(s);
+    }
+    for (const item of reporteIntentosAfiliacionesNuevoItems) {
+      const s = (item.sucursalVenta || "").toString().trim();
+      if (s) set.add(s);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [afiliacionesNuevosItems, reporteIntentosAfiliacionesNuevoItems]);
+
+  // Filtrar reporteIntentosAfiliacionesNuevoItems por sucursal
+  const reporteIntentosAfiliacionesNuevoItemsFiltrados = useMemo(() => {
+    if (filtroSucursalAfiliacionesNuevos === "") {
+      return reporteIntentosAfiliacionesNuevoItems;
+    }
+    if (filtroSucursalAfiliacionesNuevos === "__NULL__") {
+      return reporteIntentosAfiliacionesNuevoItems.filter(
+        (r) => !r.sucursalVenta || r.sucursalVenta.trim() === ""
+      );
+    }
+    return reporteIntentosAfiliacionesNuevoItems.filter(
+      (r) =>
+        (r.sucursalVenta || "").toString() === filtroSucursalAfiliacionesNuevos
+    );
+  }, [reporteIntentosAfiliacionesNuevoItems, filtroSucursalAfiliacionesNuevos]);
+
   const afiliacionesNuevosAgrupado = useMemo(() => {
     const byDate = new Map<string, AfiliacionesNuevosAgg>();
 
-    for (const item of afiliacionesNuevosItems) {
+    // Filtrar items por sucursal
+    const itemsFiltrados =
+      filtroSucursalAfiliacionesNuevos === ""
+        ? afiliacionesNuevosItems
+        : filtroSucursalAfiliacionesNuevos === "__NULL__"
+        ? afiliacionesNuevosItems.filter(
+            (r) => !r.sucursalVenta || r.sucursalVenta.trim() === ""
+          )
+        : afiliacionesNuevosItems.filter(
+            (r) =>
+              (r.sucursalVenta || "").toString() ===
+              filtroSucursalAfiliacionesNuevos
+          );
+
+    for (const item of itemsFiltrados) {
       const fecha = item.fecha_creacion || "desconocida";
 
       if (!byDate.has(fecha)) {
@@ -465,7 +515,7 @@ export default function Home() {
     );
 
     return sorted;
-  }, [afiliacionesNuevosItems]);
+  }, [afiliacionesNuevosItems, filtroSucursalAfiliacionesNuevos]);
 
   // Filtros de fecha para Tiempo Afiliación X Intento
   const [fechaInicioTiempo, setFechaInicioTiempo] = useState<string>(
@@ -1719,6 +1769,7 @@ export default function Home() {
         cantCorreccionSelfie: (r?.cantCorreccionSelfie as number) ?? 0,
         sinCorrecciones: (r?.sinCorrecciones as number) ?? 0,
         cantidadSinIntentos: (r?.cantidadSinIntentos as number) ?? 0,
+        sucursalVenta: (r?.sucursalVenta as string) ?? undefined,
       }));
       setAfiliacionesNuevosItems(mapped);
     } catch (e) {
@@ -1761,6 +1812,7 @@ export default function Home() {
         total_abandono: (r?.total_abandono as number) ?? 0,
         total_un_intento: (r?.total_un_intento as number) ?? 0,
         total_con_correcciones: (r?.total_con_correcciones as number) ?? 0,
+        sucursalVenta: (r?.sucursalVenta as string) ?? undefined,
       }));
       setReporteIntentosAfiliacionesNuevoItems(mapped);
     } catch (e) {
@@ -2061,8 +2113,8 @@ export default function Home() {
     tipoCategoria: "todoBien" | "mas2Intentos" | "conConflicto" | "abandonos"
   ) => {
     // Filtrar usuarios que coincidan con la fecha y la categoría
-    const usuariosFiltrados = reporteIntentosAfiliacionesNuevoItems.filter(
-      (item) => {
+    const usuariosFiltrados =
+      reporteIntentosAfiliacionesNuevoItemsFiltrados.filter((item) => {
         const fechaCompleta = item.fecha_creacion || "";
         const itemFecha = fechaCompleta.split("T")[0] || "desconocida";
         if (itemFecha !== fecha) return false;
@@ -2084,8 +2136,7 @@ export default function Home() {
           default:
             return false;
         }
-      }
-    );
+      });
 
     // Extraer los id_usuario_digital
     const ids = Array.from(
@@ -5157,6 +5208,26 @@ export default function Home() {
                   <div className="mt-3 flex items-end gap-3">
                     <div>
                       <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
+                        Sucursal
+                      </label>
+                      <select
+                        value={filtroSucursalAfiliacionesNuevos}
+                        onChange={(e) =>
+                          setFiltroSucursalAfiliacionesNuevos(e.target.value)
+                        }
+                        className="h-9 px-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white transition-colors"
+                      >
+                        <option value="">Todas</option>
+                        <option value="__NULL__">Sin Sucursal</option>
+                        {sucursalesAfiliacionesNuevos.map((s: string) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 dark:text-gray-300 mb-1">
                         Inicio
                       </label>
                       <input
@@ -5975,7 +6046,7 @@ export default function Home() {
                                 }
                               > = {};
 
-                              reporteIntentosAfiliacionesNuevoItems.forEach(
+                              reporteIntentosAfiliacionesNuevoItemsFiltrados.forEach(
                                 (item) => {
                                   // Extraer solo la fecha (YYYY-MM-DD) de fecha_creacion
                                   const fechaCompleta =
@@ -6109,28 +6180,28 @@ export default function Home() {
                                 SUMA TOTAL
                               </th>
                               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                {reporteIntentosAfiliacionesNuevoItemsFiltrados.reduce(
                                   (sum, item) =>
                                     sum + (item.total_un_intento || 0),
                                   0
                                 )}
                               </th>
                               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                {reporteIntentosAfiliacionesNuevoItemsFiltrados.reduce(
                                   (sum, item) =>
                                     sum + (item.total_con_correcciones || 0),
                                   0
                                 )}
                               </th>
                               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                {reporteIntentosAfiliacionesNuevoItemsFiltrados.reduce(
                                   (sum, item) =>
                                     sum + (item.total_por_conflicto || 0),
                                   0
                                 )}
                               </th>
                               <th className="px-2 py-2 text-center text-xs font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap w-0 min-w-0 border border-gray-200 dark:border-gray-700">
-                                {reporteIntentosAfiliacionesNuevoItems.reduce(
+                                {reporteIntentosAfiliacionesNuevoItemsFiltrados.reduce(
                                   (sum, item) =>
                                     sum + (item.total_abandono || 0),
                                   0
